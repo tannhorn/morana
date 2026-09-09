@@ -50,7 +50,7 @@ API declarations, or MkDocs configuration, build the complete site strictly:
 
 ```bash
 mkdocs build --strict
-python scripts/check_internal_links.py
+python scripts/check_internal_links.py --site-path /morana/
 python scripts/check_reference_exports.py
 python scripts/check_spelling_and_terms.py
 ```

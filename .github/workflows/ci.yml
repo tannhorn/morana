@@ -50,8 +50,6 @@ jobs:
         run: pylint src/morana
       - name: Compile source, examples, and tests
         run: python -m compileall src examples tests
-      - name: Check source-documentation links
-        run: python scripts/check_internal_links.py
       - name: Check reference exports
         run: python scripts/check_reference_exports.py
       - name: Check spelling and terminology

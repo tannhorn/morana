@@ -57,11 +57,21 @@ class _PageParser(HTMLParser):
                 self.targets.add(target_name)
 
 
-def check_site(site_dir: Path) -> LinkCheckResult:
-    """Check local links and fragments below one generated site directory."""
+def check_site(site_dir: Path, site_path: str = "/") -> LinkCheckResult:
+    """Check local links and fragments below one generated site directory.
+
+    Parameters
+    ----------
+    site_dir
+        Directory containing generated HTML documentation.
+    site_path
+        URL path where the generated site is hosted. For a GitHub Pages project
+        site, this is normally ``/OWNER-REPOSITORY/`` or ``/REPOSITORY/``.
+    """
     site_dir = site_dir.resolve()
     if not site_dir.is_dir():
         raise ValueError(f"generated site directory does not exist: {site_dir}")
+    normalized_site_path = _normalize_site_path(site_path)
 
     pages = tuple(sorted(site_dir.rglob("*.html")))
     if not pages:
@@ -78,7 +88,12 @@ def check_site(site_dir: Path) -> LinkCheckResult:
             if parts.scheme or parts.netloc:
                 continue
             link_count += 1
-            target = _resolve_target(site_dir, source, unquote(parts.path))
+            target = _resolve_target(
+                site_dir,
+                source,
+                unquote(parts.path),
+                normalized_site_path,
+            )
             relative_source = source.relative_to(site_dir)
             if target is None:
                 failures.append(
@@ -124,12 +139,32 @@ def _parse_page(path: Path) -> _PageParser:
     return parser
 
 
-def _resolve_target(site_dir: Path, source: Path, link_path: str) -> Path | None:
+def _normalize_site_path(site_path: str) -> str:
+    """Return a canonical absolute hosting path."""
+    if not site_path.startswith("/"):
+        raise ValueError("site path must start with '/'")
+    stripped_path = site_path.strip("/")
+    return "/" if not stripped_path else f"/{stripped_path}/"
+
+
+def _resolve_target(
+    site_dir: Path,
+    source: Path,
+    link_path: str,
+    site_path: str,
+) -> Path | None:
     """Resolve one local link path and reject traversal outside the site."""
     if not link_path:
         target = source
     elif link_path.startswith("/"):
-        target = site_dir / link_path.lstrip("/")
+        relative_path = link_path.lstrip("/")
+        site_prefix = site_path.strip("/")
+        if site_prefix and (
+            relative_path == site_prefix
+            or relative_path.startswith(f"{site_prefix}/")
+        ):
+            relative_path = relative_path[len(site_prefix) :].lstrip("/")
+        target = site_dir / relative_path
     else:
         target = source.parent / link_path
     target = target.resolve()
@@ -150,9 +185,14 @@ def main() -> int:
         default=Path("site"),
         help="generated site directory (default: site)",
     )
+    parser.add_argument(
+        "--site-path",
+        default="/",
+        help="absolute URL path where the site is hosted (default: /)",
+    )
     args = parser.parse_args()
     try:
-        result = check_site(args.site_dir)
+        result = check_site(args.site_dir, args.site_path)
     except ValueError as exc:
         parser.error(str(exc))
 

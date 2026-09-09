@@ -34,7 +34,7 @@ jobs:
       - name: Build documentation strictly
         run: mkdocs build --strict
       - name: Check source-documentation links
-        run: python scripts/check_internal_links.py
+        run: python scripts/check_internal_links.py --site-path /morana/
       - name: Check reference exports
         run: python scripts/check_reference_exports.py
       - name: Check spelling and terminology
