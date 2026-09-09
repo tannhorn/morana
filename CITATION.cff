@@ -12,6 +12,7 @@ authors:
     given-names: Lubomír
     orcid: "https://orcid.org/0000-0001-6204-0938"
 version: 0.1.0
+date-released: 2026-09-09
 doi: 10.5281/zenodo.22681316
 license: Apache-2.0
 repository-code: "https://github.com/tannhorn/morana"

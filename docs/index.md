@@ -54,8 +54,8 @@ defines the exact limits of these capabilities.
   OpenMC–Morana comparison, and their limitations.
 - **Develop or track changes:** read the
   [contributor workflow](contributor_workflow.md) and
-  [changelog](changelog.md). The source tree has package version `0.1.0`,
-  which has not yet been released.
+  [changelog](changelog.md). The latest source release is version `0.1.0`;
+  package-index publication is not yet available.
 
 !!! warning "Project status and intended use"
     Morana is intended for research, teaching, and software development. It
