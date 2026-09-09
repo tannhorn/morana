@@ -22,9 +22,9 @@ The workflow is:
 
 Morana is in early development. Its public Python API may change, including
 through incompatible changes, without a backward-compatibility guarantee.
-For the unreleased `0.1.0` source tree, record the exact Git commit and
-dependency environment: the package version alone does not identify a source
-revision. Once releases are available, pin exact versions and review the
+For a released calculation, record the exact Morana version, its version DOI,
+and the dependency environment. For calculations from the changing development
+branch, also record the exact Git commit. Review the
 [changelog](changelog.md) before upgrading.
 
 ## Build a problem

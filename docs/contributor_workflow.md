@@ -80,8 +80,125 @@ document their own reproduction commands and are run separately when in scope.
 ## Continuous integration
 
 Verification is local-first. Run the commands on this page before integration
-or release work. The repository has no hosted continuous-integration or
-documentation-deployment configuration.
+or release work. Pull requests and pushes to `main` run tests on Python 3.12,
+3.13, and 3.14, plus static, licensing, spelling, terminology, documentation,
+internal-link, and reference-export checks. The protected `main` branch
+requires every hosted check on an up-to-date pull request and allows
+squash-merging only.
+
+Morana currently uses sole-maintainer release approval. The maintainer may
+approve publication without a second-person review, but the protected
+pull-request and verification gates still apply.
+
+## Publishing a source release
+
+Morana releases are currently published from one exact commit through GitHub and Zenodo.
+
+Prepare a release through a pull request that updates the package version,
+dated changelog, citation metadata, installation guidance, and public URLs.
+The Zenodo version DOI must already be present in the source. After the pull
+request is squash-merged, update local `main` without creating another commit
+and record the exact release commit:
+
+```bash
+git switch main
+git pull --ff-only
+git status --short
+git rev-parse HEAD
+```
+
+The status output must be empty. Run the complete local verification suite from
+this page, including all maintained routine examples and the strict
+documentation checks. Confirm that the hosted verification and documentation
+workflows also pass on the same commit. Any failure requires a new pull request
+and a complete rerun on its merged commit.
+
+Build the release archive from the verified commit rather than from the working
+directory. Replace `<VERSION>` with the version being published and
+`<RELEASE_COMMIT>` with the recorded full commit hash before running each
+command block:
+
+```bash
+release_version="<VERSION>"
+release_commit="<RELEASE_COMMIT>"
+archive_name="morana-${release_version}.tar.gz"
+mkdir -p dist
+test ! -e "dist/${archive_name}"
+test ! -e "dist/${archive_name}.sha256"
+git archive \
+  --format=tar.gz \
+  --prefix="morana-${release_version}/" \
+  --output="dist/${archive_name}" \
+  "$release_commit"
+cd dist
+sha256sum "$archive_name" > "${archive_name}.sha256"
+cd ..
+```
+
+Inspect the archive before publication:
+
+```bash
+release_version="<VERSION>"
+archive_name="morana-${release_version}.tar.gz"
+tar -tzf "dist/${archive_name}"
+gzip -dc "dist/${archive_name}" | git get-tar-commit-id
+cd dist
+sha256sum --check "${archive_name}.sha256"
+cd ..
+```
+
+It must have one `morana-<VERSION>/` top-level directory and contain the
+package source, `pyproject.toml`, README, citation metadata, canonical license
+files, documentation, examples, and tests. It must exclude generated sites,
+caches, local environments, result archives, raw study data, and other
+untracked artifacts.
+
+Clean-install and test the archive outside the repository before tagging:
+
+```bash
+release_version="<VERSION>"
+archive_name="morana-${release_version}.tar.gz"
+archive_path="$(pwd)/dist/${archive_name}"
+release_test_dir="$(mktemp -d)"
+python -m venv "$release_test_dir/venv"
+"$release_test_dir/venv/bin/python" -m pip install "$archive_path"
+"$release_test_dir/venv/bin/python" -c \
+  'import sys; from importlib.metadata import version; import morana; assert version("morana") == sys.argv[1]' \
+  "$release_version"
+"$release_test_dir/venv/bin/python" examples/quickstart.py
+"$release_test_dir/venv/bin/python" examples/result_archive.py \
+  --output-dir "$release_test_dir/output"
+```
+
+Create a signed tag if signing is configured; otherwise create an annotated
+tag. The tag must point to `release_commit` and must never be moved after
+publication:
+
+```bash
+release_version="<VERSION>"
+release_commit="<RELEASE_COMMIT>"
+git tag -a "v${release_version}" "$release_commit" \
+  -m "Morana ${release_version}"
+git show --no-patch --decorate "v${release_version}"
+```
+
+During one coordinated release window:
+
+1. Push the verified commit and `v<VERSION>` tag.
+2. Upload `morana-<VERSION>.tar.gz` and its SHA-256 file to the prepared Zenodo
+   draft, then publish it and verify the version DOI.
+3. Create the GitHub release from the same tag, attach the identical two files,
+   link the Zenodo record and documentation, and use the dated changelog as the
+   release-note basis.
+4. Verify the deployed documentation and clean-install again from the
+   published GitHub release archive.
+5. Record Zenodo's concept DOI for project-level citation links while retaining
+   the version DOI for citations of the specific release.
+
+Do not use automatic GitHub-release ingestion: the archived source must already
+contain its version DOI. Do not publish either channel after a failed gate,
+rebuild the archive between channels, replace an accepted archive, reuse the
+version, or move the public tag.
 
 ## Licensing files and dependencies
 
