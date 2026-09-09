@@ -83,6 +83,12 @@ boundary, geometry, and output workflows.
 The [contributor workflow](docs/contributor_workflow.md#previewing-documentation)
 explains how to build and preview the complete documentation locally.
 
+## Citation
+
+Machine-readable citation metadata is provided in
+[`CITATION.cff`](CITATION.cff). The version DOI for Morana 0.1.0 is
+[10.5281/zenodo.22681316](https://doi.org/10.5281/zenodo.22681316).
+
 ## License
 
 Morana source code and authored documentation are licensed under

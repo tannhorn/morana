@@ -62,6 +62,7 @@ nav:
           - OpenMC–Morana SRE-derived comparison: openmc_comparison.md
           - OpenMC comparison workflow: openmc_comparison_workflow.md
       - Changelog: changelog.md
+      - Citing Morana: citation.md
       - Contributor workflow: contributor_workflow.md
       - Licenses and third-party notices: licenses.md
   - Python reference:

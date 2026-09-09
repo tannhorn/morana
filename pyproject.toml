@@ -35,6 +35,8 @@ dependencies = [
 Documentation = "https://www.lubomirbures.com/morana/"
 Source = "https://github.com/tannhorn/morana"
 Issues = "https://github.com/tannhorn/morana/issues"
+Changelog = "https://www.lubomirbures.com/morana/changelog.html"
+Citation = "https://www.lubomirbures.com/morana/citation.html"
 
 [project.optional-dependencies]
 dev = [
