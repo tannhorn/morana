@@ -1,12 +1,19 @@
 site_name: Morana
 site_description: Hex-z multigroup neutron-diffusion calculations
-site_url: https://tannhorn.github.io/morana/
+site_url: https://www.lubomirbures.com/morana/
+repo_name: tannhorn/morana
+repo_url: https://github.com/tannhorn/morana
+edit_uri: edit/main/docs/
 docs_dir: docs
 site_dir: site
 use_directory_urls: false
 
 extra:
   homepage: index.html
+  social:
+    - icon: material/account
+      link: https://www.lubomirbures.com/
+      name: Lubomír Bureš
 
 theme:
   name: material

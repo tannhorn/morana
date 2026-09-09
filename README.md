@@ -9,6 +9,10 @@ finite-volume neutron-diffusion calculations on regular hex-z lattices. It is
 a transparent reference implementation for research, teaching, and
 numerical-method development. The package import name is `morana`.
 
+Read the [published documentation](https://www.lubomirbures.com/morana/) for
+installation, modeling guidance, examples, verification evidence, and the
+Python API reference.
+
 Morana supports one-group and multigroup fixed-source and `k_eff`
 calculations on variable-height hex-z material meshes. See the
 [documentation home](docs/index.md) for a concise capability overview and the

@@ -10,7 +10,8 @@
 finite-volume neutron-diffusion calculations on regular hex-z lattices. It
 provides a transparent Python API and serves as a reference implementation for
 research, teaching, and numerical-method development. The package import name
-is `morana`.
+is `morana`. The [source code](https://github.com/tannhorn/morana) is available
+on GitHub.
 
 ## Supported calculations
 
