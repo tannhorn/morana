@@ -1,0 +1,35 @@
+[[rules]]
+pattern = '(?i)\bk\s+effective\b'
+preferred = "k-effective"
+
+[[rules]]
+pattern = '(?i)\bk-eff\b'
+preferred = "k-effective"
+
+[[rules]]
+pattern = '(?i)\bmulti-group\b'
+preferred = "multigroup"
+
+[[rules]]
+pattern = '(?i)\bnon-fissionable\b'
+preferred = "nonfissionable"
+
+[[rules]]
+pattern = '(?i)\bup-scatter\b'
+preferred = "upscatter"
+
+[[rules]]
+pattern = '(?i)\bdown-scatter\b'
+preferred = "downscatter"
+
+[[rules]]
+pattern = '(?i)\bhex\s+z\b'
+preferred = "hex-z"
+
+[[rules]]
+pattern = '(?i)\bopen\s+mc\b'
+preferred = "OpenMC"
+
+[[rules]]
+pattern = '(?i)\bpara\s+view\b'
+preferred = "ParaView"

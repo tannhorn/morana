@@ -1,0 +1,13 @@
+{% extends "main.html" %}
+
+{% block tabs %}{% endblock %}
+
+{% block content %}
+  <section class="morana-not-found" aria-labelledby="not-found-heading">
+    <img src="{{ 'assets/morana-snowflake.svg' | url }}" alt="" aria-hidden="true">
+    <p class="morana-not-found__code">404</p>
+    <h1 id="not-found-heading">Page not found</h1>
+    <p>This page has drifted beyond Morana's modeled domain.</p>
+    <p><a class="md-button md-button--primary" href="{{ 'index.html' | url }}">Return to the documentation</a></p>
+  </section>
+{% endblock %}

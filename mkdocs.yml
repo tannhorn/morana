@@ -1,0 +1,112 @@
+site_name: Morana
+site_description: Hex-z multigroup neutron-diffusion calculations
+site_url: https://tannhorn.github.io/morana/
+docs_dir: docs
+site_dir: site
+use_directory_urls: false
+
+extra:
+  homepage: index.html
+
+theme:
+  name: material
+  custom_dir: overrides
+  language: en
+  icon:
+    logo: material/snowflake
+  favicon: assets/morana-snowflake.svg
+  palette:
+    scheme: default
+    primary: blue grey
+    accent: red
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.path
+    - navigation.footer
+    - navigation.top
+    - toc.follow
+    - content.code.copy
+    - content.tabs.link
+    - search.highlight
+    - search.suggest
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Installation and quickstart: getting_started.md
+      - Maintained examples: examples.md
+  - User guide:
+      - Modeling and solver workflow: modeling_workflow.md
+      - Geometry and indexing: geometry.md
+      - Boundary conditions and face selection: boundary_conditions.md
+      - Theory and numerical conventions: theory_references.md
+      - Direct finite-volume operator assembly: operator_assembly.md
+      - Inspection and output: outputs.md
+      - Result archives: result_archives.md
+      - OpenMC MGXS import: openmc_mgxs.md
+  - Development:
+      - Verification and comparisons:
+          - Overview: verification.md
+          - One-dimensional axial core-reflector case: one_group_keff.md
+          - Fixed-source manufactured-solution case: fixed_source_mms.md
+          - k-effective manufactured-solution case: keff_mms.md
+          - OpenMC–Morana SRE-derived comparison: openmc_comparison.md
+          - OpenMC comparison workflow: openmc_comparison_workflow.md
+      - Changelog: changelog.md
+      - Contributor workflow: contributor_workflow.md
+      - Licenses and third-party notices: licenses.md
+  - Python reference:
+      - Overview: reference/index.md
+      - Core API: reference/core.md
+      - Finite-volume diffusion solves: reference/finite_volume.md
+      - Coupled operators: reference/operators.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: numpy
+            filters:
+              - "!^_"
+            members_order: alphabetical
+            merge_init_into_class: true
+            separate_signature: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_signature_annotations: true
+            show_source: false
+
+markdown_extensions:
+  - smarty
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.arithmatex:
+      generic: true
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: ["."]
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_css:
+  - stylesheets/extra.css
+  - stylesheets/home_logo.css
+
+extra_javascript:
+  - assets/mathjax-config.js
+  - assets/mathjax/tex-chtml.js

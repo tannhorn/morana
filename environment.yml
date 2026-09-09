@@ -1,0 +1,24 @@
+name: morana-dev
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - numpy
+  - scipy
+  - matplotlib
+  - "mkdocs>=1.6,<2"
+  - plotly
+  - pyyaml
+  - pydantic
+  - h5py
+  - black
+  - pytest
+  - pylint
+  - vtk
+  - pip
+  - pip:
+      - -e .
+      - "codespell>=2,<3"
+      - mkdocstrings-python
+      - "mkdocs-material>=9,<10"
+      - reuse

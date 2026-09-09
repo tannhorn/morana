@@ -1,0 +1,151 @@
+/* Morana's quiet winter palette keeps long technical pages easy to scan. */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #536a7a;
+  --md-primary-fg-color--light: #718797;
+  --md-primary-fg-color--dark: #374b59;
+  --md-accent-fg-color: #98544d;
+  --md-default-bg-color: #fbfaf7;
+  --md-default-fg-color: #29343b;
+  --md-code-bg-color: #f0f2f3;
+}
+
+.md-grid {
+  max-width: 90rem;
+}
+
+.md-header__title {
+  font-weight: 600;
+  letter-spacing: 0.015em;
+}
+
+.md-typeset h1 {
+  color: var(--md-primary-fg-color--dark);
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.md-typeset h2 {
+  border-bottom: 0.05rem solid color-mix(
+    in srgb,
+    var(--md-primary-fg-color) 28%,
+    transparent
+  );
+  padding-bottom: 0.25rem;
+}
+
+.md-typeset code {
+  border-radius: 0.2rem;
+}
+
+.md-typeset table:not([class]) {
+  border-radius: 0.25rem;
+  box-shadow: 0 0.15rem 0.45rem rgb(25 39 47 / 8%);
+  overflow: hidden;
+}
+
+/* Keep detailed generated plots readable without dominating wide documentation pages. */
+.md-typeset img.morana-doc-figure {
+  display: block;
+  margin: 1rem auto;
+  width: min(100%, 38rem);
+}
+
+/* Let wide, multi-panel figures use the complete documentation text column. */
+.md-typeset img.morana-doc-figure-wide {
+  display: block;
+  margin: 1rem auto;
+  width: 100%;
+}
+
+/* Treat paired plot panels as one figure when constraining their width. */
+.md-typeset .grid.morana-doc-figure-grid {
+  margin: 1rem auto;
+  max-width: 48rem;
+}
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 0.25rem;
+}
+
+.doc-signature {
+  border-left: 0.2rem solid var(--md-accent-fg-color);
+  border-radius: 0.2rem;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Keep generated API signatures and deep member names usable on narrow screens. */
+.doc-signature > pre,
+.doc-signature > pre > code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.md-sidebar--secondary .md-nav__link {
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
+
+/* Keep long generated API tables of contents within the visible sidebar. */
+@media screen and (min-width: 60em) and (max-width: 76.234375em) {
+  .md-sidebar--secondary .md-sidebar__scrollwrap {
+    max-height: calc(100vh - 4.8rem);
+  }
+}
+
+@media screen and (min-width: 76.25em) {
+  .md-sidebar--secondary .md-sidebar__scrollwrap {
+    max-height: calc(100vh - 7.2rem);
+  }
+}
+
+/* Make nested guide sections distinct from their parent-level siblings. */
+.md-sidebar--primary .md-nav[data-md-level="2"] {
+  border-left: 0.1rem solid color-mix(
+    in srgb,
+    var(--md-primary-fg-color) 30%,
+    transparent
+  );
+  margin-left: 0.45rem;
+  padding-left: 0.3rem;
+}
+
+.morana-not-found {
+  background:
+    radial-gradient(circle at 15% 20%, rgb(113 135 151 / 18%) 0 0.18rem, transparent 0.22rem),
+    radial-gradient(circle at 82% 15%, rgb(83 106 122 / 16%) 0 0.13rem, transparent 0.18rem),
+    radial-gradient(circle at 74% 78%, rgb(113 135 151 / 18%) 0 0.16rem, transparent 0.21rem),
+    radial-gradient(circle at 27% 84%, rgb(83 106 122 / 14%) 0 0.12rem, transparent 0.17rem);
+  margin: 1rem auto;
+  max-width: 38rem;
+  padding: clamp(2rem, 8vw, 5rem) 1.5rem;
+  text-align: center;
+}
+
+.morana-not-found img {
+  height: 5.5rem;
+  transform: translateX(0.3rem);
+  width: 5.5rem;
+}
+
+.morana-not-found__code {
+  color: var(--md-primary-fg-color--dark);
+  font-size: clamp(2.8rem, 12vw, 5.5rem);
+  font-weight: 650;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.morana-not-found h1 {
+  border: 0;
+  padding: 0;
+}
+
+@media screen and (max-width: 44.984375em) {
+  .doc-signature > pre > code {
+    font-size: 0.72rem;
+    padding-inline: 0.8rem;
+  }
+}

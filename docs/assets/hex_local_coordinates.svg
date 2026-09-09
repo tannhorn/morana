@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520" role="img" aria-labelledby="title desc">
+  <title id="title">Single hexagon pitch and local direction labels</title>
+  <desc id="desc">A point-top regular hexagon with flat-to-flat pitch, apothem, side length, and x, u, v face-normal direction labels.</desc>
+  <defs>
+    <marker id="arrow-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1f2937"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#dc2626"/>
+    </marker>
+    <style>
+      .hex { fill: #f8fafc; stroke: #111827; stroke-width: 3; }
+      .axis { stroke: #1f2937; stroke-width: 3; marker-end: url(#arrow-dark); }
+      .axis-neg { stroke: #6b7280; stroke-width: 2; stroke-dasharray: 5 5; marker-end: url(#arrow-dark); }
+      .measure { stroke: #dc2626; stroke-width: 2.5; marker-start: url(#arrow-red); marker-end: url(#arrow-red); }
+      .guide { stroke: #dc2626; stroke-width: 1.5; stroke-dasharray: 4 4; }
+      .text { font-family: Arial, sans-serif; fill: #111827; font-size: 20px; }
+      .small { font-family: Arial, sans-serif; fill: #374151; font-size: 16px; }
+      .red { fill: #dc2626; }
+      .label { font-family: Arial, sans-serif; fill: #111827; font-size: 21px; font-weight: 700; }
+    </style>
+  </defs>
+
+  <text class="text" x="36" y="62">Local hex directions</text>
+  <text class="small" x="36" y="96">The solver uses one supported</text>
+  <text class="small" x="36" y="120">point-top hex orientation.</text>
+  <text class="small" x="36" y="155">The x, u, and v labels name</text>
+  <text class="small" x="36" y="179">the three pairs of opposite</text>
+  <text class="small" x="36" y="203">face-normal directions.</text>
+  <text class="small" x="36" y="238">The stored 2D lattice coordinate</text>
+  <text class="small" x="36" y="262">has two integer components;</text>
+  <text class="small" x="36" y="286">x/u/v are direction labels used</text>
+  <text class="small" x="36" y="310">for neighbors and faces.</text>
+
+  <!-- Point-top regular hexagon matching HexPlanarMesh.cell_vertices(). -->
+  <polygon class="hex" points="520,165 446.4,207.5 446.4,292.5 520,335 593.6,292.5 593.6,207.5"/>
+  <circle cx="520" cy="250" r="5" fill="#111827"/>
+
+  <!-- Morana face-normal directions. SVG y increases downward, so upper directions have smaller y coordinates. -->
+  <line class="axis" x1="520" y1="250" x2="748" y2="250"/>
+  <line class="axis-neg" x1="520" y1="250" x2="306" y2="250"/>
+  <text class="label" x="758" y="257">x+</text>
+  <text class="small" x="276" y="257">x-</text>
+
+  <line class="axis" x1="520" y1="250" x2="638" y2="46"/>
+  <line class="axis-neg" x1="520" y1="250" x2="402" y2="454"/>
+  <text class="label" x="648" y="42">u+</text>
+  <text class="small" x="374" y="476">u-</text>
+
+  <line class="axis" x1="520" y1="250" x2="402" y2="46"/>
+  <line class="axis-neg" x1="520" y1="250" x2="638" y2="454"/>
+  <text class="label" x="368" y="42">v+</text>
+  <text class="small" x="648" y="476">v-</text>
+
+  <!-- Flat-to-flat pitch across the x-normal face pair, drawn below the hex. -->
+  <line class="guide" x1="446.4" y1="292.5" x2="446.4" y2="382"/>
+  <line class="guide" x1="593.6" y1="292.5" x2="593.6" y2="382"/>
+  <line class="measure" x1="446.4" y1="382" x2="593.6" y2="382"/>
+  <text class="text red" x="420" y="414">pitch p, flat-to-flat</text>
+
+  <!-- Apothem and side length, offset from the black axes. -->
+  <line class="guide" x1="520" y1="250" x2="520" y2="276"/>
+  <line class="guide" x1="593.6" y1="250" x2="593.6" y2="276"/>
+  <line class="measure" x1="520" y1="276" x2="593.6" y2="276"/>
+  <text class="small red" x="538" y="303">p / 2</text>
+  <line class="guide" x1="446.4" y1="207.5" x2="418" y2="207.5"/>
+  <line class="guide" x1="446.4" y1="292.5" x2="418" y2="292.5"/>
+  <line class="measure" x1="418" y1="207.5" x2="418" y2="292.5"/>
+  <text class="small red" x="334" y="214">p / sqrt(3)</text>
+</svg>

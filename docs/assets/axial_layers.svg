@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="560" viewBox="0 0 920 560" role="img" aria-labelledby="title desc">
+  <title id="title">Variable-height MaterialMesh slice stack</title>
+  <desc id="desc">An original bottom-to-top material slice stack with unequal reflector and core heights, cumulative z bounds, axial indices, and composition from custom and extruded fragments sharing one HexPlanarMesh.</desc>
+  <style>
+    .title { font-family: sans-serif; font-size: 24px; font-weight: bold; fill: #0f172a; } .text { font-family: sans-serif; font-size: 16px; fill: #0f172a; }
+    .small { font-family: sans-serif; font-size: 14px; fill: #334155; } .centered { text-anchor: middle; } .z-label { text-anchor: end; } .note { font-family: sans-serif; font-size: 13px; fill: #475569; }
+    .line { stroke: #1e3a5f; stroke-width: 2; } .axis { stroke: #0f172a; stroke-width: 2; }
+    .reflector { fill: #bfdbfe; stroke: #1e3a5f; stroke-width: 2; } .core { fill: #fecaca; stroke: #1e3a5f; stroke-width: 2; } .custom { fill: #ddd6fe; stroke: #1e3a5f; stroke-width: 2; }
+  </style>
+  <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#0f172a"/></marker></defs>
+  <text class="title" x="42" y="46">MaterialMesh.stack: bottom-to-top variable-height slices</text>
+  <!-- stack, deliberately unequal -->
+  <rect class="reflector" x="350" y="385" width="245" height="75"/><rect class="core" x="350" y="205" width="245" height="180"/><rect class="custom" x="350" y="125" width="245" height="80"/>
+  <text class="text centered" x="472.5" y="430">bottom reflector</text><text class="small centered" x="472.5" y="450">custom slice, h₀ = 1.0</text>
+  <text class="text centered" x="472.5" y="255">active core</text><text class="small centered" x="472.5" y="277">slice.extrude(heights=(1.2, 1.8))</text>
+  <line class="line" x1="350" y1="295" x2="595" y2="295"/>
+  <text class="small" x="608" y="258">axial_index = 2</text><text class="small" x="608" y="348">axial_index = 1</text>
+  <text class="text centered" x="472.5" y="168">top reflector</text><text class="small centered" x="472.5" y="188">custom slice, h₃ = 0.8</text><text class="small" x="608" y="168">axial_index = 3</text><text class="small" x="608" y="430">axial_index = 0</text>
+  <!-- cumulative coordinate axis -->
+  <line class="axis" x1="300" y1="470" x2="300" y2="100" marker-end="url(#arrow)"/><text class="text" x="286" y="92">z</text>
+  <line class="line" x1="330" y1="460" x2="350" y2="460"/><text class="small z-label" x="285" y="465">z₀ = 0</text>
+  <line class="line" x1="330" y1="385" x2="350" y2="385"/><text class="small z-label" x="285" y="390">z₁ = h₀</text>
+  <line class="line" x1="330" y1="295" x2="350" y2="295"/><text class="small z-label" x="285" y="300">z₂ = h₀ + h₁</text>
+  <line class="line" x1="330" y1="205" x2="350" y2="205"/><text class="small z-label" x="285" y="210">z₃ = h₀ + h₁ + h₂</text>
+  <line class="line" x1="330" y1="125" x2="350" y2="125"/><text class="small z-label" x="285" y="130">z₄ = Σ hₖ = z_max</text>
+  <text class="note" x="42" y="510">Every MaterialSlice references the identical HexPlanarMesh; only material keys, active IDs, and height vary by layer.</text>
+  <text class="note" x="42" y="533">Stack fragments compose before construction: bottom reflector + core extrusion + top reflector.</text>
+</svg>

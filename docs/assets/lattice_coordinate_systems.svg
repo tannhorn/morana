@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="500" viewBox="0 0 960 500" role="img" aria-labelledby="title desc">
+  <title id="title">Lattice coordinates, planar IDs, and OpenMC ring positions</title>
+  <desc id="desc">Three views of the same num_rings equals 2 hexagonal lattice: lattice coordinates, planar IDs, and OpenMC ring-position indices.</desc>
+  <defs>
+    <style>
+      .hex { fill: #f8fafc; stroke: #111827; stroke-width: 2; }
+      .text { font-family: Arial, sans-serif; fill: #111827; font-size: 15px; text-anchor: middle; dominant-baseline: middle; }
+      .title { font-family: Arial, sans-serif; fill: #111827; font-size: 20px; font-weight: 700; text-anchor: middle; }
+      .note { font-family: Arial, sans-serif; fill: #374151; font-size: 15px; }
+      .outer { fill: #e0f2fe; }
+      .center { fill: #dcfce7; }
+    </style>
+  </defs>
+
+  <text class="title" x="160" y="42">Lattice (x, u)</text>
+  <polygon class="hex outer" points="276,206.9 236,183.8 196,206.9 196,253.1 236,276.2 276,253.1"/><text class="text" x="236" y="230">(1,0)</text>
+  <polygon class="hex outer" points="236,276.9 196,253.8 156,276.9 156,323.1 196,346.2 236,323.1"/><text class="text" x="196" y="300">(1,-1)</text>
+  <polygon class="hex outer" points="156,276.9 116,253.8 76,276.9 76,323.1 116,346.2 156,323.1"/><text class="text" x="116" y="300">(0,-1)</text>
+  <polygon class="hex outer" points="116,206.9 76,183.8 36,206.9 36,253.1 76,276.2 116,253.1"/><text class="text" x="76" y="230">(-1,0)</text>
+  <polygon class="hex outer" points="156,136.9 116,113.8 76,136.9 76,183.1 116,206.2 156,183.1"/><text class="text" x="116" y="160">(-1,1)</text>
+  <polygon class="hex outer" points="236,136.9 196,113.8 156,136.9 156,183.1 196,206.2 236,183.1"/><text class="text" x="196" y="160">(0,1)</text>
+  <polygon class="hex center" points="196,206.9 156,183.8 116,206.9 116,253.1 156,276.2 196,253.1"/><text class="text" x="156" y="230">(0,0)</text>
+
+  <text class="title" x="480" y="42">planar_id</text>
+  <polygon class="hex outer" points="596,206.9 556,183.8 516,206.9 516,253.1 556,276.2 596,253.1"/><text class="text" x="556" y="230">0</text>
+  <polygon class="hex outer" points="556,276.9 516,253.8 476,276.9 476,323.1 516,346.2 556,323.1"/><text class="text" x="516" y="300">1</text>
+  <polygon class="hex outer" points="476,276.9 436,253.8 396,276.9 396,323.1 436,346.2 476,323.1"/><text class="text" x="436" y="300">2</text>
+  <polygon class="hex outer" points="436,206.9 396,183.8 356,206.9 356,253.1 396,276.2 436,253.1"/><text class="text" x="396" y="230">3</text>
+  <polygon class="hex outer" points="476,136.9 436,113.8 396,136.9 396,183.1 436,206.2 476,183.1"/><text class="text" x="436" y="160">4</text>
+  <polygon class="hex outer" points="556,136.9 516,113.8 476,136.9 476,183.1 516,206.2 556,183.1"/><text class="text" x="516" y="160">5</text>
+  <polygon class="hex center" points="516,206.9 476,183.8 436,206.9 436,253.1 476,276.2 516,253.1"/><text class="text" x="476" y="230">6</text>
+
+  <text class="title" x="800" y="42">OpenMC ring/position</text>
+  <polygon class="hex outer" points="916,206.9 876,183.8 836,206.9 836,253.1 876,276.2 916,253.1"/><text class="text" x="876" y="230">r0,p0</text>
+  <polygon class="hex outer" points="876,276.9 836,253.8 796,276.9 796,323.1 836,346.2 876,323.1"/><text class="text" x="836" y="300">r0,p1</text>
+  <polygon class="hex outer" points="796,276.9 756,253.8 716,276.9 716,323.1 756,346.2 796,323.1"/><text class="text" x="756" y="300">r0,p2</text>
+  <polygon class="hex outer" points="756,206.9 716,183.8 676,206.9 676,253.1 716,276.2 756,253.1"/><text class="text" x="716" y="230">r0,p3</text>
+  <polygon class="hex outer" points="796,136.9 756,113.8 716,136.9 716,183.1 756,206.2 796,183.1"/><text class="text" x="756" y="160">r0,p4</text>
+  <polygon class="hex outer" points="876,136.9 836,113.8 796,136.9 796,183.1 836,206.2 876,183.1"/><text class="text" x="836" y="160">r0,p5</text>
+  <polygon class="hex center" points="836,206.9 796,183.8 756,206.9 756,253.1 796,276.2 836,253.1"/><text class="text" x="796" y="230">r1,p0</text>
+
+  <text class="note" x="70" y="420">All three panels describe the same full num_rings=2 lattice.</text>
+  <text class="note" x="70" y="446">Public ordering is OpenMC orientation=&quot;x&quot;: outermost ring first, then inward; positions start at x+ and proceed clockwise.</text>
+</svg>

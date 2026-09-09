@@ -1,0 +1,25 @@
+/* Present the opaque home-page illustration as a softly mounted print. */
+.morana-home-title {
+  margin-bottom: 0.8rem !important;
+  position: relative;
+  text-align: center;
+}
+
+.morana-home-title .headerlink {
+  position: absolute;
+}
+
+.morana-home-logo__art {
+  background: #ded9d2;
+  border: 1px solid rgb(83 106 122 / 18%);
+  box-shadow: 0 0.35rem 1.1rem rgb(41 52 59 / 14%);
+  display: inline-block;
+  line-height: 0;
+  padding: 0.35rem;
+}
+
+.morana-home-logo__art img {
+  display: block;
+  height: auto;
+  max-width: 100%;
+}

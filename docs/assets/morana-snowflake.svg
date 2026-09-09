@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Morana snowflake</title>
+  <desc id="desc">A six-armed blue-gray snowflake.</desc>
+  <g fill="none" stroke="#536a7a" stroke-linecap="round" stroke-linejoin="round" stroke-width="5">
+    <path d="M32 7v50M10.35 19.5l43.3 25M10.35 44.5l43.3-25"/>
+    <path d="m32 7-6 8m6-8 6 8M32 57l-6-8m6 8 6-8M10.35 19.5l10 .8m-10-.8 4.3 9M53.65 44.5l-10-.8m10 .8-4.3-9M10.35 44.5l4.3-9m-4.3 9 10-.8M53.65 19.5l-4.3 9m4.3-9-10 .8"/>
+  </g>
+</svg>

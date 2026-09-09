@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="620" viewBox="0 0 920 620" role="img" aria-labelledby="title desc">
+  <title id="title">Axial extension of a local hex cell</title>
+  <desc id="desc">A projected hexagonal-prism control volume at planar position m in axial layer k. It identifies the z direction, layer height, axial faces, radial faces inherited from the local x, u, and v directions, and volume.</desc>
+  <style>
+    .top { fill: #bfdbfe; stroke: #1e3a5f; stroke-width: 2.5; }
+    .side-a { fill: #dbeafe; stroke: #1e3a5f; stroke-width: 2.5; }
+    .side-b { fill: #c9ddf5; stroke: #1e3a5f; stroke-width: 2.5; }
+    .side-c { fill: #b8d2ef; stroke: #1e3a5f; stroke-width: 2.5; }
+    .edge { stroke: #1e3a5f; stroke-width: 2.5; fill: none; }
+    .measure { stroke: #475569; stroke-width: 1.8; fill: none; }
+    .axis { stroke: #1f2937; stroke-width: 2.5; fill: none; }
+    .leader { stroke: #64748b; stroke-width: 1.5; fill: none; }
+    .dash { stroke-dasharray: 5 4; }
+    .heading { font-family: sans-serif; font-size: 24px; font-weight: bold; fill: #0f172a; }
+    .label { font-family: sans-serif; font-size: 16px; fill: #0f172a; }
+    .small { font-family: sans-serif; font-size: 14px; fill: #334155; }
+    .note { font-family: sans-serif; font-size: 13px; fill: #475569; }
+    .centered { text-anchor: middle; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="#475569"/></marker>
+    <marker id="axis-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#1f2937"/></marker>
+  </defs>
+  <text class="heading" x="42" y="48">Axial extension of a local hex cell</text>
+
+  <!-- View from above: the top face and the four front/side radial faces are visible. -->
+  <polygon class="side-a" points="500,160 500,220 500,400 500,340"/>
+  <polygon class="side-b" points="500,220 380,260 380,440 500,400"/>
+  <polygon class="side-c" points="380,260 260,220 260,400 380,440"/>
+  <polygon class="side-a" points="260,220 260,160 260,340 260,400"/>
+  <polygon class="top" points="380,120 500,160 500,220 380,260 260,220 260,160"/>
+  <path class="edge" d="M260,340 L260,400 L380,440 L500,400 L500,340"/>
+  <line class="measure" x1="260" y1="400" x2="260" y2="478"/>
+  <line class="measure" x1="500" y1="400" x2="500" y2="478"/>
+  <line class="measure" x1="272" y1="480" x2="488" y2="480" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text class="small centered" x="380" y="502">flat-to-flat pitch p</text>
+
+  <!-- The planar directions and measures are defined by hex_local_coordinates. -->
+  <circle cx="380" cy="190" r="4.5" fill="#1f2937"/>
+  <line class="axis" x1="380" y1="190" x2="380" y2="82" marker-end="url(#axis-arrow)"/>
+  <text class="label" x="392" y="94">z</text>
+
+  <!-- Cell identity and volume. -->
+  <text class="small centered" x="440" y="315">cell (m, k)</text>
+  <text class="small centered" x="440" y="337">V = Aₕₑₓ hₖ</text>
+
+  <!-- Face annotations. -->
+  <path class="leader" d="M450,153 L535,126 L550,126"/>
+  <text class="label" x="560" y="132">top axial face</text>
+  <text class="small" x="560" y="153">area Aₕₑₓ</text>
+  <line class="leader dash" x1="462" y1="412" x2="565" y2="452"/>
+  <text class="label" x="578" y="457">bottom axial face</text>
+  <text class="small" x="578" y="478">area Aₕₑₓ (hidden)</text>
+  <path class="leader" d="M275,310 L205,272"/>
+  <text class="label" x="190" y="270" text-anchor="end">radial directions</text>
+  <text class="small" x="190" y="292" text-anchor="end">x±, u±, v± from the</text>
+  <text class="small" x="190" y="313" text-anchor="end">local hex coordinate view</text>
+  <text class="small" x="190" y="336" text-anchor="end">six faces: Aᵣ = (p / √3) hₖ</text>
+
+  <!-- The new axial measure is the layer height. -->
+  <line class="measure" x1="500" y1="220" x2="545" y2="220"/>
+  <line class="measure" x1="500" y1="400" x2="545" y2="400"/>
+  <line class="measure" x1="545" y1="220" x2="545" y2="400" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text class="label" x="560" y="316">height hₖ</text>
+
+  <text class="note" x="42" y="570">Planar position m supplies the radial faces; adding axial index k and height hₖ forms the control volume.</text>
+  <text class="note" x="42" y="592">Axial coupling crosses the top or bottom face using this layer's half-height hₖ/2.</text>
+</svg>
