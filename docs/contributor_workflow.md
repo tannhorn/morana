@@ -45,6 +45,13 @@ every completed milestone handoff:
 reuse lint
 ```
 
+After changing `CITATION.cff`, validate it against the Citation File Format
+schema:
+
+```bash
+cffconvert --validate -i CITATION.cff
+```
+
 After changing tracked documentation, public NumPy-style docstrings, exported
 API declarations, or MkDocs configuration, build the complete site strictly:
 
@@ -80,11 +87,24 @@ document their own reproduction commands and are run separately when in scope.
 ## Continuous integration
 
 Verification is local-first. Run the commands on this page before integration
-or release work. Pull requests and pushes to `main` run tests on Python 3.12,
-3.13, and 3.14, plus static, licensing, spelling, terminology, documentation,
-internal-link, and reference-export checks. The protected `main` branch
+or release work. Make new changes on the long-lived `devel` branch; keep
+`main` for integrated, release-ready work. Pushes to `main` and pull requests
+into `main` run tests on Python 3.12, 3.13, and 3.14, plus static, licensing,
+spelling, terminology, documentation, internal-link, and reference-export
+checks. Run the local checks during ordinary `devel` work, or dispatch a
+workflow manually when clean-environment verification is useful before a pull
+request. Once a pull request is open, each update to it runs the hosted checks.
+Only pushes to `main` deploy documentation. The protected `main` branch
 requires every hosted check on an up-to-date pull request and allows
 squash-merging only.
+
+Merging a pull request into `main` integrates the change; it does not publish a
+Morana release. Ordinary pull requests may update project-level documentation or contributor automation. A change that affects a
+specific release—the package version, `CITATION.cff` version or version DOI,
+dated changelog entry, release URL, source archive, tag, or GitHub and Zenodo
+publication—must use the explicit release procedure below. Record relevant
+public changes in the `Unreleased` changelog section until that release is
+prepared.
 
 Morana currently uses sole-maintainer release approval. The maintainer may
 approve publication without a second-person review, but the protected
@@ -92,13 +112,15 @@ pull-request and verification gates still apply.
 
 ## Publishing a source release
 
-Morana releases are currently published from one exact commit through GitHub and Zenodo.
+Only the following explicit procedure turns an exact `main` commit into a
+Morana release through GitHub and Zenodo. It is separate from ordinary `main`
+integration.
 
-Prepare a release through a pull request that updates the package version,
-dated changelog, citation metadata, installation guidance, and public URLs.
-The Zenodo version DOI must already be present in the source. After the pull
-request is squash-merged, update local `main` without creating another commit
-and record the exact release commit:
+Prepare a release on `devel`, then use a pull request from `devel` into `main`
+to integrate the package version, dated changelog, citation metadata,
+installation guidance, and public URLs. The Zenodo version DOI must already be
+present in the source. After the pull request is squash-merged, update local
+`main` without creating another commit and record the exact release commit:
 
 ```bash
 git switch main

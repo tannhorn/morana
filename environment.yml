@@ -18,6 +18,7 @@ dependencies:
   - pip
   - pip:
       - -e .
+      - "cffconvert>=2,<3"
       - "codespell>=2,<3"
       - mkdocstrings-python
       - "mkdocs-material>=9,<10"

@@ -92,6 +92,8 @@ explains how to build and preview the complete documentation locally.
 Machine-readable citation metadata is provided in
 [`CITATION.cff`](CITATION.cff). The version DOI for Morana 0.1.0 is
 [10.5281/zenodo.22681316](https://doi.org/10.5281/zenodo.22681316).
+For the latest Morana release rather than a specific version, use the
+[all-versions DOI 10.5281/zenodo.22681315](https://doi.org/10.5281/zenodo.22681315).
 
 ## License
 

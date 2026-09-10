@@ -54,5 +54,7 @@ jobs:
         run: python scripts/check_spelling_and_terms.py
       - name: Check licensing metadata
         run: reuse lint
+      - name: Validate citation metadata
+        run: cffconvert --validate -i CITATION.cff
       - name: Check patch whitespace
         run: git diff --check
