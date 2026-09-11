@@ -1,8 +1,11 @@
 # Changelog
 
-This page records dated releases and subsequent unreleased changes. Entries
+This page records dated releases and notable unreleased changes that help a
+package user decide whether or how to install, upgrade, or use Morana. Entries
 follow the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) categories
 where they apply: Added, Changed, Deprecated, Removed, Fixed, and Security.
+Routine documentation corrections, citation-metadata updates, repository
+maintenance, and maintainer-only tooling do not receive separate entries.
 Each release section summarizes capabilities, limitations, verification
 evidence, and upgrade actions. Current package behavior is documented in the
 [modeling and solver workflow](modeling_workflow.md),
@@ -10,14 +13,6 @@ evidence, and upgrade actions. Current package behavior is documented in the
 [Python reference](reference/index.md).
 
 ## Unreleased
-
-### Changed
-
-- Added the Zenodo all-versions DOI to project-level citation guidance while
-  retaining the version DOI for citations of Morana 0.1.0.
-- Published the Morana 0.1.0 source distribution and pure-Python wheel on PyPI
-  through an approval-gated Trusted Publisher workflow. The supported
-  package-index installation is now `pip install morana==0.1.0`.
 
 ## 0.1.0 - 2026-09-09
 

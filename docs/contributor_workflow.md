@@ -98,13 +98,32 @@ Only pushes to `main` deploy documentation. The protected `main` branch
 requires every hosted check on an up-to-date pull request and allows
 squash-merging only.
 
+Because a squash merge gives the integrated change a new commit identity,
+synchronize the long-lived `devel` branch immediately after each pull request
+merge and before beginning new work:
+
+```bash
+scripts/sync_devel_after_pr.sh <PR_NUMBER>
+```
+
+The script requires a clean worktree, fetches `origin`, merges `origin/main`
+into `devel` with a descriptive synchronization commit, and pushes `devel`.
+Keeping this merge-back step adjacent to the squash merge prevents the branch
+histories from accumulating unrelated versions of the same change.
+
 Merging a pull request into `main` integrates the change; it does not publish a
-Morana release. Ordinary pull requests may update project-level documentation or contributor automation. A change that affects a
-specific release—the package version, `CITATION.cff` version or version DOI,
-dated changelog entry, release URL, source archive, tag, or GitHub and Zenodo
-publication—must use the explicit release procedure below. Record relevant
-public changes in the `Unreleased` changelog section until that release is
-prepared.
+Morana release. Ordinary pull requests may update project-level documentation
+or contributor automation. A change that affects a specific release—the
+package version, `CITATION.cff` version or version DOI, dated changelog entry,
+release URL, source archive, tag, or GitHub and Zenodo publication—must use the
+explicit release procedure below. Record relevant public changes in the
+`Unreleased` changelog section until that release is prepared, but only when
+they help package users decide whether or how to install, upgrade, or use
+Morana. Do not add separate entries for routine documentation corrections,
+citation-metadata updates, repository maintenance, CI changes, or
+maintainer-only tooling. When the availability of an already released version
+changes, update that dated release entry instead of describing the event as an
+unreleased package change.
 
 Morana currently uses sole-maintainer release approval. The maintainer may
 approve publication without a second-person review, but the protected
@@ -421,8 +440,10 @@ does not make another documentation page evidence for an implementation claim.
   verification and experimental validation.
 - The licenses page owns notices for assets distributed with the generated
   site; `REUSE.toml` owns repository file annotations.
-- The changelog owns dated release notes; it does not duplicate the modeling
-  and solver workflow's capability inventory.
+- The changelog owns dated, user-relevant release notes; it does not duplicate
+  the modeling and solver workflow's capability inventory or record routine
+  documentation, metadata, repository-process, CI, or maintainer-tooling
+  changes.
 - The README and documentation home provide concise summaries and route
   readers to these owners without duplicating detailed capability contracts.
 - `docs/reference/` is rendered from explicit `__all__` declarations, type
