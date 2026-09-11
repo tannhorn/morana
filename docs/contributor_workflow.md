@@ -110,6 +110,31 @@ Morana currently uses sole-maintainer release approval. The maintainer may
 approve publication without a second-person review, but the protected
 pull-request and verification gates still apply.
 
+## Publishing package distributions
+
+Package-index publication is separate from the GitHub and Zenodo source-release
+procedure. The dedicated `.github/workflows/publish.yml` workflow never runs
+for a branch push. It checks out an annotated `v<VERSION>` tag, confirms the
+project metadata, builds exactly one source distribution and one pure-Python
+wheel, validates their contents, and transfers those checked files to a
+separate publishing job.
+
+Configure a Trusted Publisher at each package index for the repository,
+`publish.yml`, and the corresponding `testpypi` or `pypi` GitHub environment.
+Require maintainer approval for the production `pypi` environment. Only the
+publishing jobs receive permission to request short-lived OIDC credentials;
+do not store a package-index API token in GitHub.
+
+When TestPyPI rehearsal is part of a release, build the distributions once and
+promote the same files through TestPyPI verification and the protected PyPI
+environment. Confirm both filenames and SHA-256 digests before promotion, then
+run the installed metadata, quickstart, and result-archive smoke paths. For the
+normal release path, publish the GitHub release only after its annotated tag,
+source metadata, release evidence, and distribution checks are complete; the
+`release: published` event selects the protected production path. Package files
+and versions are immutable: do not rerun a successful production upload or
+move its tag.
+
 ## Publishing a source release
 
 Only the following explicit procedure turns an exact `main` commit into a

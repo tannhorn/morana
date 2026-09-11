@@ -1,0 +1,205 @@
+name: Publish package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and validate distributions
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Resolve release
+        id: release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [ "$EVENT_NAME" = "release" ]; then
+            tag="$RELEASE_TAG"
+            version="${tag#v}"
+            test "$tag" = "v${version}"
+          else
+            tag="v0.1.0"
+            version="0.1.0"
+          fi
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+      - name: Check out the immutable release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          fetch-depth: 0
+      - name: Verify the annotated tag and release metadata
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          git cat-file -e "${TAG}^{tag}"
+          test "$(git rev-parse "${TAG}^{commit}")" = "$(git rev-parse HEAD)"
+          if [ "$VERSION" = "0.1.0" ]; then
+            test "$(git rev-parse HEAD)" = "7c0cad9ba9d467a615df8578a9e2b09ad939372d"
+          fi
+          python -c 'import pathlib, tomllib; metadata = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))["project"]; assert metadata["name"] == "morana"; assert metadata["version"] == __import__("os").environ["VERSION"]; assert metadata["requires-python"] == ">=3.12"'
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Build and inspect distributions
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build --outdir dist
+          python -m twine check dist/*
+          test -f "dist/morana-${VERSION}.tar.gz"
+          test -f "dist/morana-${VERSION}-py3-none-any.whl"
+          test "$(find dist -maxdepth 1 -type f | wc -l)" -eq 2
+          tar -tzf "dist/morana-${VERSION}.tar.gz"
+          python -m zipfile -l "dist/morana-${VERSION}-py3-none-any.whl"
+          sha256sum dist/*
+      - name: Upload checked distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-distributions-${{ steps.release.outputs.version }}
+          path: dist/
+          if-no-files-found: error
+
+  publish-testpypi:
+    name: Publish bootstrap artifacts to TestPyPI
+    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download checked distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-distributions-${{ needs.build.outputs.version }}
+          path: dist/
+      - name: Publish through Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          repository-url: https://test.pypi.org/legacy/
+
+  smoke-testpypi:
+    name: Verify bootstrap artifacts from TestPyPI
+    needs: [build, publish-testpypi]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the immutable release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.build.outputs.tag }}
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Download checked distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-distributions-${{ needs.build.outputs.version }}
+          path: dist/
+      - name: Verify TestPyPI files and run clean-install smoke checks
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import time
+          from urllib.error import HTTPError
+          from urllib.request import urlopen
+
+          expected = {
+              path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+              for path in Path("dist").iterdir()
+              if path.is_file()
+          }
+          url = f"https://test.pypi.org/pypi/morana/{os.environ['VERSION']}/json"
+          for attempt in range(8):
+              try:
+                  with urlopen(url, timeout=30) as response:
+                      release = json.load(response)
+              except HTTPError as error:
+                  if error.code != 404 or attempt == 7:
+                      raise
+              else:
+                  published = {
+                      item["filename"]: item["digests"]["sha256"]
+                      for item in release["urls"]
+                  }
+                  if published == expected:
+                      break
+                  if attempt == 7:
+                      raise RuntimeError(
+                          f"TestPyPI files do not match checked artifacts: "
+                          f"expected {expected}, found {published}"
+                      )
+              time.sleep(15)
+          PY
+          python -m venv "$RUNNER_TEMP/morana-testpypi"
+          smoke_python="$RUNNER_TEMP/morana-testpypi/bin/python"
+          "$smoke_python" -m pip install --no-cache-dir \
+            --index-url https://test.pypi.org/simple/ \
+            --extra-index-url https://pypi.org/simple/ \
+            "morana==${VERSION}"
+          "$smoke_python" -c \
+            'import sys; from importlib.metadata import version; import morana; assert version("morana") == sys.argv[1]' \
+            "$VERSION"
+          "$smoke_python" examples/quickstart.py
+          "$smoke_python" examples/result_archive.py \
+            --output-dir "$RUNNER_TEMP/result-archive"
+
+  publish-bootstrap-pypi:
+    name: Publish rehearsed bootstrap artifacts to PyPI
+    needs: [build, smoke-testpypi]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download rehearsed distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-distributions-${{ needs.build.outputs.version }}
+          path: dist/
+      - name: Publish through Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
+  publish-release-pypi:
+    name: Publish release artifacts to PyPI
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download checked distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-distributions-${{ needs.build.outputs.version }}
+          path: dist/
+      - name: Publish through Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
