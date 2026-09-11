@@ -43,6 +43,8 @@ DOI = "https://doi.org/10.5281/zenodo.22681316"
 [project.optional-dependencies]
 dev = [
   "black",
+  "build>=1,<2",
+  "cffconvert>=2,<3",
   "codespell>=2,<3",
   "mkdocs>=1.6,<2",
   "mkdocs-material>=9,<10",
@@ -50,6 +52,7 @@ dev = [
   "pylint",
   "pytest",
   "reuse",
+  "twine>=6,<7",
   "vtk",
 ]
 

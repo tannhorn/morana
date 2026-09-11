@@ -18,7 +18,10 @@ dependencies:
   - pip
   - pip:
       - -e .
+      - "build>=1,<2"
+      - "cffconvert>=2,<3"
       - "codespell>=2,<3"
       - mkdocstrings-python
       - "mkdocs-material>=9,<10"
       - reuse
+      - "twine>=6,<7"

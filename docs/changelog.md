@@ -9,6 +9,13 @@ evidence, and upgrade actions. Current package behavior is documented in the
 [verification guide](verification.md), and source-derived
 [Python reference](reference/index.md).
 
+## Unreleased
+
+### Changed
+
+- Added the Zenodo all-versions DOI to project-level citation guidance while
+  retaining the version DOI for citations of Morana 0.1.0.
+
 ## 0.1.0 - 2026-09-09
 
 Version `0.1.0` is Morana's initial source release. It establishes the
