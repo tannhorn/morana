@@ -1,6 +1,7 @@
 # One-dimensional axial core-reflector case
 
-`examples/one_group_keff.py` is a one-group criticality verification case with
+[`examples/one_group_keff.py`](https://github.com/tannhorn/morana/blob/main/examples/one_group_keff.py)
+is a one-group criticality verification case with
 an analytic two-region axial diffusion solution. It uses one planar hexagon
 and reflective lateral faces, so no radial leakage is present and the hex-z
 model reduces exactly to a one-dimensional problem in $z$. The fixed

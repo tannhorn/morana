@@ -250,7 +250,9 @@ The [reproduction workflow](openmc_comparison_workflow.md) covers environment
 setup, geometry checks, CE and MGXS execution, restart rules, artifact locations,
 Morana execution, comparison commands, and
 [documentation-figure regeneration](openmc_comparison_workflow.md#regenerate-the-documentation-figures)
-for `examples/openmc_comparison/`. Raw statepoints, evaluated nuclear data,
+for the repository's
+[`examples/openmc_comparison/`](https://github.com/tannhorn/morana/tree/main/examples/openmc_comparison)
+directory. Raw statepoints, evaluated nuclear data,
 runtime-MGXS libraries, result archives, and NumPy arrays are deliberately not
 distributed.
 

@@ -19,9 +19,12 @@ evidence, and upgrade actions. Current package behavior is documented in the
 Version `0.1.0` is Morana's initial source release. It establishes the
 object-based Python API and finite-volume reference implementation for
 multigroup fixed-source and `k_eff` calculations on variable-height hex-z
-lattices. The release is available from GitHub and archived under
+lattices. The release is available as a
+[GitHub release](https://github.com/tannhorn/morana/releases/tag/v0.1.0) and
+archived under
 [DOI 10.5281/zenodo.22681316](https://doi.org/10.5281/zenodo.22681316). Its
-source distribution and pure-Python wheel are also available from PyPI.
+source distribution and pure-Python wheel are also available from
+[PyPI](https://pypi.org/project/morana/0.1.0/).
 
 Morana 0.1.0 is its first public release; development before this release
 occurred in a private repository, so the public Git history begins with version
@@ -53,6 +56,8 @@ occurred in a private repository, so the public Git history begins with version
   decisions.
 - The supported platform is Linux with Python 3.12 or newer. The public API and
   result-archive schema may change incompatibly during early development.
-- Version `0.1.0` is distributed through PyPI and as source through GitHub and
-  Zenodo. Conda packages, native binaries, containers, and bundled nuclear data
-  are not provided.
+- Version `0.1.0` is distributed through
+  [PyPI](https://pypi.org/project/morana/0.1.0/) and as source through
+  [GitHub](https://github.com/tannhorn/morana/releases/tag/v0.1.0) and Zenodo.
+  Conda packages, native binaries, containers, and bundled nuclear data are not
+  provided.

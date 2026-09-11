@@ -2,7 +2,7 @@
 
 This page documents Morana's fixed-source method of manufactured solutions
 (MMS) verification case. Its executable form is
-`examples/fixed_source_mms.py`.
+[`examples/fixed_source_mms.py`](https://github.com/tannhorn/morana/blob/main/examples/fixed_source_mms.py).
 
 At each refinement level, the case solves a three-group, nonfissioning
 diffusion problem with radial and axial diffusion, unequal-height layers,

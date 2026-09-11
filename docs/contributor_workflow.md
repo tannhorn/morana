@@ -3,7 +3,11 @@
 This page is for contributors and maintainers changing Morana's source code,
 tests, documentation, examples, or build dependencies. Package users do not
 need these checks to run Morana; start instead with
-[installation and quickstart](getting_started.md).
+[installation and quickstart](getting_started.md). Development takes place in
+the [Morana repository](https://github.com/tannhorn/morana); proposed changes
+are submitted as [pull requests](https://github.com/tannhorn/morana/pulls), and
+bugs or scoped feature requests can be reported through the
+[issue tracker](https://github.com/tannhorn/morana/issues).
 
 ## Development disclosure
 
@@ -63,8 +67,14 @@ python scripts/check_spelling_and_terms.py
 ```
 
 The link check scans the generated HTML, verifies every local `href` target,
-and requires each URL fragment to match an ID in its target page. It therefore
-catches stale heading anchors that the strict MkDocs build does not reject.
+and requires each URL fragment to match an ID in its target page. It also scans
+tracked Markdown outside the configured documentation source directory. Links
+below the published `site_url` map back to the generated site, while GitHub
+`blob/main` and `tree/main` links below the configured `repo_url` map back to
+the checkout. These project cross-links are checked locally without network
+requests; other external links are ignored. The check therefore catches stale
+heading anchors and project cross-links that the strict MkDocs build does not
+reject.
 The reference-export check compares the runtime `__all__` declarations of
 `morana`, `morana.solvers.finite_volume`, and `morana.operators` with exact
 mkdocstrings IDs in their generated reference pages, rejecting missing runtime
@@ -267,9 +277,14 @@ version, or move the public tag.
 ## Licensing files and dependencies
 
 Morana source code, authored documentation, tests, examples, and ordinary
-project assets are Apache-2.0. The root `CONTRIBUTING.md` records the
-contribution agreement. The root `LICENSE` is the canonical project license,
-`pyproject.toml` declares the package license, and `LICENSES/` contains
+project assets are Apache-2.0. The root
+[`CONTRIBUTING.md`](https://github.com/tannhorn/morana/blob/main/CONTRIBUTING.md)
+records the contribution agreement. The root
+[`LICENSE`](https://github.com/tannhorn/morana/blob/main/LICENSE) is the
+canonical project license,
+[`pyproject.toml`](https://github.com/tannhorn/morana/blob/main/pyproject.toml)
+declares the package license, and
+[`LICENSES/`](https://github.com/tannhorn/morana/tree/main/LICENSES) contains
 canonical SPDX license texts.
 
 `REUSE.toml` supplies copyright and SPDX license annotations for the

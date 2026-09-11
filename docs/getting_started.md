@@ -33,7 +33,8 @@ compare its SHA-256 digest with the accompanying
 `morana-0.1.0.tar.gz.sha256` file.
 
 The installation brings in Morana's runtime dependencies from
-`pyproject.toml`, including `h5py`, which supports the
+[`pyproject.toml`](https://github.com/tannhorn/morana/blob/main/pyproject.toml),
+including `h5py`, which supports the
 [OpenMC runtime-MGXS material importer](openmc_mgxs.md). OpenMC itself is not
 a Morana runtime dependency; the maintained transport comparison needs it for
 model construction, geometry checks, and CE/MGXS calculations. Python VTK is
@@ -47,7 +48,8 @@ Contributors and maintainers use the project Conda environment. It installs
 Morana in editable mode together with its test, documentation, and file-reader
 verification dependencies.
 
-Create the environment from the repository root:
+Create the environment from the repository root using the checked-in
+[`environment.yml`](https://github.com/tannhorn/morana/blob/main/environment.yml):
 
 ```bash
 conda env create -f environment.yml
@@ -61,7 +63,9 @@ conda env update -n morana-dev -f environment.yml --prune
 conda activate morana-dev
 ```
 
-Changes under `src/morana` are immediately importable. See the
+Changes under the repository's
+[`src/morana/`](https://github.com/tannhorn/morana/tree/main/src/morana)
+directory are immediately importable. See the
 [contributor workflow](contributor_workflow.md) for required development
 checks.
 
@@ -73,6 +77,10 @@ $\phi=Q/\Sigma_a=50$ in every active cell:
 ```python
 --8<-- "examples/quickstart.py"
 ```
+
+The complete executable is available as
+[`examples/quickstart.py`](https://github.com/tannhorn/morana/blob/main/examples/quickstart.py)
+in the source repository.
 
 Even a one-layer mesh is a finite hex-z layer. The global reflective condition
 above covers its radial, bottom, top, and excluded-region faces. To model a

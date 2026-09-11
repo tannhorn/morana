@@ -1,8 +1,11 @@
 # Contributing to Morana
 
-Use the [contributor workflow](docs/contributor_workflow.md) document for the
+Use the published [contributor
+workflow](https://www.lubomirbures.com/morana/contributor_workflow.html) for the
 development environment, required source and documentation checks, file
-licensing, documentation ownership, and maintainer-only asset procedures.
+licensing, documentation ownership, and maintainer-only asset procedures. Its
+[Markdown source](docs/contributor_workflow.md) is maintained in this
+repository.
 
 ## Licensing
 

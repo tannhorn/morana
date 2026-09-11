@@ -1,8 +1,9 @@
 # OpenMC comparison workflow
 
 Run the commands on this page from the repository root. The scripts live in
-`examples/openmc_comparison/` and share the geometry and material definitions
-used by the CE reference, MGXS generation, and Morana model. See the
+[`examples/openmc_comparison/`](https://github.com/tannhorn/morana/tree/main/examples/openmc_comparison)
+and share the geometry and material definitions used by the CE reference,
+MGXS generation, and Morana model. See the
 [comparison results](openmc_comparison.md) for the physical model, figures,
 numerical evidence, and interpretation.
 

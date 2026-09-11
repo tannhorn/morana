@@ -51,6 +51,107 @@ def test_check_site_accepts_project_site_root_relative_targets(tmp_path: Path) -
     assert not result.failures
 
 
+def test_check_site_accepts_known_documentation_and_repository_links(
+    tmp_path: Path,
+) -> None:
+    """Known absolute project links should resolve against local artifacts."""
+    repository_root = tmp_path / "repository"
+    repository_root.mkdir()
+    examples = repository_root / "examples"
+    examples.mkdir()
+    (examples / "quickstart.py").write_text("", encoding="utf-8")
+
+    site_dir = tmp_path / "site"
+    site_dir.mkdir()
+    (site_dir / "index.html").write_text(
+        '<a href="https://docs.example/morana/guide.html#section">Guide</a>'
+        '<a href="https://github.example/owner/project/blob/main/'
+        'examples/quickstart.py">Source</a>'
+        '<a href="https://github.example/owner/project/tree/main/examples">'
+        "Examples</a>",
+        encoding="utf-8",
+    )
+    (site_dir / "guide.html").write_text(
+        '<h1 id="section">Section</h1>', encoding="utf-8"
+    )
+
+    result = check_site(
+        site_dir,
+        site_url="https://docs.example/morana/",
+        repository_root=repository_root,
+        repository_url="https://github.example/owner/project",
+    )
+
+    assert result.links == 3
+    assert not result.failures
+
+
+def test_check_site_checks_known_links_in_repository_markdown(
+    tmp_path: Path,
+) -> None:
+    """Project links outside the generated documentation should also be checked."""
+    repository_root = tmp_path / "repository"
+    repository_root.mkdir()
+    readme = repository_root / "README.md"
+    readme.write_text(
+        "[Guide](https://docs.example/morana/guide.html#section)\n\n"
+        "[Source](https://github.example/owner/project/blob/main/example.py)\n\n"
+        "[External](https://example.com/ignored)\n",
+        encoding="utf-8",
+    )
+    (repository_root / "example.py").write_text("", encoding="utf-8")
+
+    site_dir = tmp_path / "site"
+    site_dir.mkdir()
+    (site_dir / "index.html").write_text("", encoding="utf-8")
+    (site_dir / "guide.html").write_text(
+        '<h1 id="section">Section</h1>', encoding="utf-8"
+    )
+
+    result = check_site(
+        site_dir,
+        site_url="https://docs.example/morana/",
+        repository_root=repository_root,
+        repository_url="https://github.example/owner/project",
+        markdown_files=(readme,),
+    )
+
+    assert result.links == 2
+    assert not result.failures
+
+
+def test_check_site_reports_missing_known_project_targets(tmp_path: Path) -> None:
+    """Missing published pages, fragments, files, and directories should fail."""
+    repository_root = tmp_path / "repository"
+    repository_root.mkdir()
+    site_dir = tmp_path / "site"
+    site_dir.mkdir()
+    (site_dir / "index.html").write_text(
+        '<a href="https://docs.example/morana/missing.html">Missing page</a>'
+        '<a href="https://docs.example/morana/index.html#missing">'
+        "Missing fragment</a>"
+        '<a href="https://github.example/owner/project/blob/main/missing.py">'
+        "Missing file</a>"
+        '<a href="https://github.example/owner/project/tree/main/missing">'
+        "Missing directory</a>",
+        encoding="utf-8",
+    )
+
+    result = check_site(
+        site_dir,
+        site_url="https://docs.example/morana/",
+        repository_root=repository_root,
+        repository_url="https://github.example/owner/project",
+    )
+
+    assert tuple(failure.reason for failure in result.failures) == (
+        "missing target",
+        "missing fragment",
+        "missing repository file",
+        "missing repository directory",
+    )
+
+
 def test_check_site_reports_missing_targets_fragments_and_traversal(
     tmp_path: Path,
 ) -> None:
