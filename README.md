@@ -50,17 +50,16 @@ and releasing AI-assisted contributions.
 ## Installation
 
 Morana requires Python 3.12 or newer. Version `0.1.0` is available as a
-[source release from GitHub](https://github.com/tannhorn/morana/releases/tag/v0.1.0)
-and is archived on Zenodo under
-[DOI 10.5281/zenodo.22681316](https://doi.org/10.5281/zenodo.22681316). No
-package-index distribution is currently available. Install the exact release
-into an isolated environment:
+[package distribution from PyPI](https://pypi.org/project/morana/0.1.0/), as a
+[source release from GitHub](https://github.com/tannhorn/morana/releases/tag/v0.1.0),
+and from Zenodo under
+[DOI 10.5281/zenodo.22681316](https://doi.org/10.5281/zenodo.22681316). Install
+the exact release into an isolated environment:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install \
-  https://github.com/tannhorn/morana/releases/download/v0.1.0/morana-0.1.0.tar.gz
+python -m pip install "morana==0.1.0"
 ```
 
 Follow [installation and quickstart](docs/getting_started.md) for platform

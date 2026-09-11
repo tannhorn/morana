@@ -119,21 +119,17 @@ project metadata, builds exactly one source distribution and one pure-Python
 wheel, validates their contents, and transfers those checked files to a
 separate publishing job.
 
-Configure a Trusted Publisher at each package index for the repository,
-`publish.yml`, and the corresponding `testpypi` or `pypi` GitHub environment.
-Require maintainer approval for the production `pypi` environment. Only the
-publishing jobs receive permission to request short-lived OIDC credentials;
-do not store a package-index API token in GitHub.
+Configure the PyPI Trusted Publisher for the repository, `publish.yml`, and the
+`pypi` GitHub environment. Require maintainer approval for that environment.
+Only the publishing job receives permission to request short-lived OIDC
+credentials; do not store a package-index API token in GitHub.
 
-When TestPyPI rehearsal is part of a release, build the distributions once and
-promote the same files through TestPyPI verification and the protected PyPI
-environment. Confirm both filenames and SHA-256 digests before promotion, then
-run the installed metadata, quickstart, and result-archive smoke paths. For the
-normal release path, publish the GitHub release only after its annotated tag,
-source metadata, release evidence, and distribution checks are complete; the
-`release: published` event selects the protected production path. Package files
-and versions are immutable: do not rerun a successful production upload or
-move its tag.
+Publish the GitHub release only after its annotated tag, source metadata,
+release evidence, and distribution checks are complete. The `release:
+published` event selects the protected production path. After publication,
+perform a clean, no-cache installation from PyPI and run the installed
+metadata, quickstart, and result-archive smoke paths. Package files and versions
+are immutable: do not rerun a successful upload or move its tag.
 
 ## Publishing a source release
 
@@ -237,9 +233,11 @@ During one coordinated release window:
 3. Create the GitHub release from the same tag, attach the identical two files,
    link the Zenodo record and documentation, and use the dated changelog as the
    release-note basis.
-4. Verify the deployed documentation and clean-install again from the
+4. Approve the protected PyPI publishing job, verify its distribution files,
+   and clean-install the exact version from PyPI.
+5. Verify the deployed documentation and clean-install again from the
    published GitHub release archive.
-5. Record Zenodo's concept DOI for project-level citation links while retaining
+6. Record Zenodo's concept DOI for project-level citation links while retaining
    the version DOI for citations of the specific release.
 
 Do not use automatic GitHub-release ingestion: the archived source must already
