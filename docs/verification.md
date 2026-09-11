@@ -21,11 +21,11 @@ in computational science ([Oberkampf and Trucano,
 The detailed derivations, acceptance criteria, and reproducible artifacts for
 the maintained numerical cases are on separate pages:
 
-| Case | Evidence | Details |
-| --- | --- | --- |
-| One-dimensional axial core-reflector | Analytic fundamental eigenvalue and source-normalized axial cell averages | [One-dimensional axial core-reflector case](one_group_keff.md) |
-| Fixed-source MMS | Three-group, variable-height refinement with independently evaluated source and Dirichlet data | [Fixed-source manufactured-solution case](fixed_source_mms.md) |
-| k-effective MMS | One-group, three-dimensional eigenpair refinement with manufactured fission and Robin data | [k-effective manufactured-solution case](keff_mms.md) |
+| Case | Evidence | Documentation | Source |
+| --- | --- | --- | --- |
+| One-dimensional axial core-reflector | Analytic fundamental eigenvalue and source-normalized axial cell averages | [Case details](one_group_keff.md) | [`one_group_keff.py`](https://github.com/tannhorn/morana/blob/main/examples/one_group_keff.py) |
+| Fixed-source MMS | Three-group, variable-height refinement with independently evaluated source and Dirichlet data | [Case details](fixed_source_mms.md) | [`fixed_source_mms.py`](https://github.com/tannhorn/morana/blob/main/examples/fixed_source_mms.py) |
+| k-effective MMS | One-group, three-dimensional eigenpair refinement with manufactured fission and Robin data | [Case details](keff_mms.md) | [`keff_mms.py`](https://github.com/tannhorn/morana/blob/main/examples/keff_mms.py) |
 
 The [theory and numerical conventions](theory_references.md) page defines the
 equations and conventions these cases exercise.
@@ -36,9 +36,9 @@ Comparison cases exercise a complete modeling workflow against an independent
 calculation without claiming an exact solution, formal benchmark, or
 experimental validation.
 
-| Case | Comparison | Details |
-| --- | --- | --- |
-| OpenMC–Morana SRE-derived mini-core | Heterogeneous OpenMC continuous-energy reference against homogenized multigroup Morana diffusion, including energy and axial convergence | [OpenMC–Morana SRE-derived comparison](openmc_comparison.md) |
+| Case | Comparison | Documentation | Source |
+| --- | --- | --- | --- |
+| OpenMC–Morana SRE-derived mini-core | Heterogeneous OpenMC continuous-energy reference against homogenized multigroup Morana diffusion, including energy and axial convergence | [Comparison details](openmc_comparison.md) | [`examples/openmc_comparison/`](https://github.com/tannhorn/morana/tree/main/examples/openmc_comparison) |
 
 The OpenMC case reports agreement and remaining systematic differences. It
 appears in a separate comparison table because neither code supplies an exact
@@ -47,11 +47,12 @@ reference solution for that model.
 ## Reproducing the checks
 
 The [contributor workflow](contributor_workflow.md) gives the exact commands
-for `pytest` and the documentation checks. The test suite exercises the Python
-implementation; the documentation checks build the public site, verify links
-and generated reference pages, and check spelling and terminology. Maintained
-examples provide numerical evidence; the browser-based smoke check verifies
-that representative documentation pages and equations render offline.
+for `pytest` and the documentation checks. The repository's
+[`tests/`](https://github.com/tannhorn/morana/tree/main/tests) suite exercises
+the Python implementation; the documentation checks build the public site,
+verify links and generated reference pages, and check spelling and terminology.
+Maintained examples provide numerical evidence; the browser-based smoke check
+verifies that representative documentation pages and equations render offline.
 
 ## What automated checks cover
 

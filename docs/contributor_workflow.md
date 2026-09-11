@@ -3,7 +3,11 @@
 This page is for contributors and maintainers changing Morana's source code,
 tests, documentation, examples, or build dependencies. Package users do not
 need these checks to run Morana; start instead with
-[installation and quickstart](getting_started.md).
+[installation and quickstart](getting_started.md). Development takes place in
+the [Morana repository](https://github.com/tannhorn/morana); proposed changes
+are submitted as [pull requests](https://github.com/tannhorn/morana/pulls), and
+bugs or scoped feature requests can be reported through the
+[issue tracker](https://github.com/tannhorn/morana/issues).
 
 ## Development disclosure
 
@@ -63,8 +67,14 @@ python scripts/check_spelling_and_terms.py
 ```
 
 The link check scans the generated HTML, verifies every local `href` target,
-and requires each URL fragment to match an ID in its target page. It therefore
-catches stale heading anchors that the strict MkDocs build does not reject.
+and requires each URL fragment to match an ID in its target page. It also scans
+tracked Markdown outside the configured documentation source directory. Links
+below the published `site_url` map back to the generated site, while GitHub
+`blob/main` and `tree/main` links below the configured `repo_url` map back to
+the checkout. These project cross-links are checked locally without network
+requests; other external links are ignored. The check therefore catches stale
+heading anchors and project cross-links that the strict MkDocs build does not
+reject.
 The reference-export check compares the runtime `__all__` declarations of
 `morana`, `morana.solvers.finite_volume`, and `morana.operators` with exact
 mkdocstrings IDs in their generated reference pages, rejecting missing runtime
@@ -98,13 +108,32 @@ Only pushes to `main` deploy documentation. The protected `main` branch
 requires every hosted check on an up-to-date pull request and allows
 squash-merging only.
 
+Because a squash merge gives the integrated change a new commit identity,
+synchronize the long-lived `devel` branch immediately after each pull request
+merge and before beginning new work:
+
+```bash
+scripts/sync_devel_after_pr.sh <PR_NUMBER>
+```
+
+The script requires a clean worktree, fetches `origin`, merges `origin/main`
+into `devel` with a descriptive synchronization commit, and pushes `devel`.
+Keeping this merge-back step adjacent to the squash merge prevents the branch
+histories from accumulating unrelated versions of the same change.
+
 Merging a pull request into `main` integrates the change; it does not publish a
-Morana release. Ordinary pull requests may update project-level documentation or contributor automation. A change that affects a
-specific release—the package version, `CITATION.cff` version or version DOI,
-dated changelog entry, release URL, source archive, tag, or GitHub and Zenodo
-publication—must use the explicit release procedure below. Record relevant
-public changes in the `Unreleased` changelog section until that release is
-prepared.
+Morana release. Ordinary pull requests may update project-level documentation
+or contributor automation. A change that affects a specific release—the
+package version, `CITATION.cff` version or version DOI, dated changelog entry,
+release URL, source archive, tag, or GitHub and Zenodo publication—must use the
+explicit release procedure below. Record relevant public changes in the
+`Unreleased` changelog section until that release is prepared, but only when
+they help package users decide whether or how to install, upgrade, or use
+Morana. Do not add separate entries for routine documentation corrections,
+citation-metadata updates, repository maintenance, CI changes, or
+maintainer-only tooling. When the availability of an already released version
+changes, update that dated release entry instead of describing the event as an
+unreleased package change.
 
 Morana currently uses sole-maintainer release approval. The maintainer may
 approve publication without a second-person review, but the protected
@@ -248,9 +277,14 @@ version, or move the public tag.
 ## Licensing files and dependencies
 
 Morana source code, authored documentation, tests, examples, and ordinary
-project assets are Apache-2.0. The root `CONTRIBUTING.md` records the
-contribution agreement. The root `LICENSE` is the canonical project license,
-`pyproject.toml` declares the package license, and `LICENSES/` contains
+project assets are Apache-2.0. The root
+[`CONTRIBUTING.md`](https://github.com/tannhorn/morana/blob/main/CONTRIBUTING.md)
+records the contribution agreement. The root
+[`LICENSE`](https://github.com/tannhorn/morana/blob/main/LICENSE) is the
+canonical project license,
+[`pyproject.toml`](https://github.com/tannhorn/morana/blob/main/pyproject.toml)
+declares the package license, and
+[`LICENSES/`](https://github.com/tannhorn/morana/tree/main/LICENSES) contains
 canonical SPDX license texts.
 
 `REUSE.toml` supplies copyright and SPDX license annotations for the
@@ -421,8 +455,10 @@ does not make another documentation page evidence for an implementation claim.
   verification and experimental validation.
 - The licenses page owns notices for assets distributed with the generated
   site; `REUSE.toml` owns repository file annotations.
-- The changelog owns dated release notes; it does not duplicate the modeling
-  and solver workflow's capability inventory.
+- The changelog owns dated, user-relevant release notes; it does not duplicate
+  the modeling and solver workflow's capability inventory or record routine
+  documentation, metadata, repository-process, CI, or maintainer-tooling
+  changes.
 - The README and documentation home provide concise summaries and route
   readers to these owners without duplicating detailed capability contracts.
 - `docs/reference/` is rendered from explicit `__all__` declarations, type

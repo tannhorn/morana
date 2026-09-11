@@ -52,10 +52,14 @@ defines the exact limits of these capabilities.
   [verification and comparisons](verification.md) for tested behavior,
   analytic references, manufactured-solution studies, the end-to-end
   OpenMC–Morana comparison, and their limitations.
-- **Develop or track changes:** read the
+- **Develop or track changes:** browse the
+  [source repository](https://github.com/tannhorn/morana), read the
   [contributor workflow](contributor_workflow.md) and
-  [changelog](changelog.md). The latest source release is version `0.1.0`;
-  install its package distribution from PyPI.
+  [changelog](changelog.md), or
+  [report an issue](https://github.com/tannhorn/morana/issues). The latest
+  [source release](https://github.com/tannhorn/morana/releases/tag/v0.1.0) is
+  version `0.1.0`; install its
+  [package distribution from PyPI](https://pypi.org/project/morana/0.1.0/).
 
 !!! warning "Project status and intended use"
     Morana is intended for research, teaching, and software development. It

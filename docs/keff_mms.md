@@ -1,7 +1,9 @@
 # k-effective manufactured-solution case
 
 This page documents Morana's one-group k-effective method of manufactured
-solutions (MMS) case, implemented in `examples/keff_mms.py`. The case verifies
+solutions (MMS) case, implemented in
+[`examples/keff_mms.py`](https://github.com/tannhorn/morana/blob/main/examples/keff_mms.py).
+The case verifies
 a manufactured criticality eigenpair.
 
 The companion [fixed-source MMS case](fixed_source_mms.md) introduces MMS and

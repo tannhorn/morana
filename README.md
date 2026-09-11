@@ -15,8 +15,10 @@ Python API reference.
 
 Morana supports one-group and multigroup fixed-source and `k_eff`
 calculations on variable-height hex-z material meshes. See the
-[documentation home](docs/index.md) for a concise capability overview and the
-[modeling and solver workflow](docs/modeling_workflow.md) for the supported
+[documentation home](https://www.lubomirbures.com/morana/) for a concise
+capability overview and the
+[modeling and solver workflow](https://www.lubomirbures.com/morana/modeling_workflow.html)
+for the supported
 workflow and capability limits.
 
 ## Project status
@@ -26,14 +28,16 @@ not been validated against experimental reactor measurements or qualified for
 design, operational, licensing, or regulatory decisions. Results must be
 independently reviewed and validated for their intended use. Example cross
 sections are illustrative and are not reactor-design data. See
-[verification and comparisons](docs/verification.md) for the evidence and its
+[verification and comparisons](https://www.lubomirbures.com/morana/verification.html)
+for the evidence and its
 limitations.
 
 Morana is also in early development: its public Python API may change
 incompatibly without a backward-compatibility guarantee. Record the exact source
 commit and dependency environment for reproducible work, and review the
-[API stability policy](docs/modeling_workflow.md#api-stability) and
-[changelog](docs/changelog.md) before upgrading.
+[API stability policy](https://www.lubomirbures.com/morana/modeling_workflow.html#api-stability)
+and [changelog](https://www.lubomirbures.com/morana/changelog.html) before
+upgrading.
 
 Morana 0.1.0 is its first public release; development before this release
 occurred in a private repository, so the public Git history begins with version
@@ -62,29 +66,33 @@ source .venv/bin/activate
 python -m pip install "morana==0.1.0"
 ```
 
-Follow [installation and quickstart](docs/getting_started.md) for platform
-requirements, the WSL option for Windows users, and a first analytic problem.
-Contributors should use the documented Conda development environment. The
-[maintained examples](docs/examples.md) demonstrate the supported solver,
-boundary, geometry, and output workflows.
+Follow [installation and
+quickstart](https://www.lubomirbures.com/morana/getting_started.html) for
+platform requirements, the WSL option for Windows users, and a first analytic
+problem. Contributors should use the documented Conda development environment.
+The [maintained examples](https://www.lubomirbures.com/morana/examples.html)
+demonstrate the supported solver, boundary, geometry, and output workflows.
 
 ## Documentation
 
-- **Start:** [installation and quickstart](docs/getting_started.md) and
-  [maintained examples](docs/examples.md)
-- **Understand:** [geometry and indexing](docs/geometry.md),
-  [theory and numerical conventions](docs/theory_references.md), and
-  [inspection and output](docs/outputs.md)
-- **Build and solve:** [modeling and solver workflow](docs/modeling_workflow.md),
-  [boundary conditions and face selection](docs/boundary_conditions.md), and
-  [source-derived Python reference](docs/reference/index.md)
+- **Start:** [installation and quickstart](https://www.lubomirbures.com/morana/getting_started.html)
+  and [maintained examples](https://www.lubomirbures.com/morana/examples.html)
+- **Understand:** [geometry and indexing](https://www.lubomirbures.com/morana/geometry.html),
+  [theory and numerical conventions](https://www.lubomirbures.com/morana/theory_references.html),
+  and [inspection and output](https://www.lubomirbures.com/morana/outputs.html)
+- **Build and solve:** [modeling and solver workflow](https://www.lubomirbures.com/morana/modeling_workflow.html),
+  [boundary conditions and face selection](https://www.lubomirbures.com/morana/boundary_conditions.html),
+  and [source-derived Python reference](https://www.lubomirbures.com/morana/reference/index.html)
 - **Evaluate and contribute:**
-  [verification and comparisons](docs/verification.md),
-  [changelog](docs/changelog.md), and
-  [contributor workflow](docs/contributor_workflow.md)
+  [verification and comparisons](https://www.lubomirbures.com/morana/verification.html),
+  [changelog](https://www.lubomirbures.com/morana/changelog.html), and
+  [contributor workflow](https://www.lubomirbures.com/morana/contributor_workflow.html)
 
-The [contributor workflow](docs/contributor_workflow.md#previewing-documentation)
-explains how to build and preview the complete documentation locally.
+The [contributor
+workflow](https://www.lubomirbures.com/morana/contributor_workflow.html#previewing-documentation)
+explains how to build and preview the complete documentation locally. The
+Markdown sources remain available in the repository's
+[`docs/`](https://github.com/tannhorn/morana/tree/main/docs) directory.
 
 ## Citation
 
@@ -99,4 +107,5 @@ For the latest Morana release rather than a specific version, use the
 Morana source code and authored documentation are licensed under
 [Apache-2.0](LICENSE) and provided without warranties or conditions beyond
 those stated in the license. The documentation site includes
-[third-party notices](docs/licenses.md) for its distributed frontend assets.
+[third-party notices](https://www.lubomirbures.com/morana/licenses.html) for
+its distributed frontend assets.

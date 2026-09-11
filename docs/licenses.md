@@ -3,7 +3,8 @@
 Morana source code and its authored documentation are licensed under
 Apache-2.0. The complete text is served with this documentation as
 [`morana-license.txt`](assets/morana-license.txt); the repository root
-`LICENSE` is the canonical source copy. This page accompanies every generated
+[`LICENSE`](https://github.com/tannhorn/morana/blob/main/LICENSE) is the
+canonical source copy. This page accompanies every generated
 documentation site so that the notices for frontend material distributed with
 that site remain available to readers and redistributors.
 
