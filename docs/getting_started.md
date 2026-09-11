@@ -3,10 +3,10 @@
 ## Requirements
 
 Morana requires Python 3.12 or newer. Version `0.1.0` is available as a
-[source release from GitHub](https://github.com/tannhorn/morana/releases/tag/v0.1.0)
-and is archived on Zenodo under
-[DOI 10.5281/zenodo.22681316](https://doi.org/10.5281/zenodo.22681316). No
-package-index distribution is currently available.
+[package distribution from PyPI](https://pypi.org/project/morana/0.1.0/), as a
+[source release from GitHub](https://github.com/tannhorn/morana/releases/tag/v0.1.0),
+and from Zenodo under
+[DOI 10.5281/zenodo.22681316](https://doi.org/10.5281/zenodo.22681316).
 
 !!! warning "Supported platforms"
     Morana is developed and verified on Linux. Native Windows and macOS
@@ -18,18 +18,18 @@ package-index distribution is currently available.
 
 ## User installation
 
-Create an isolated virtual environment and install the exact source release:
+Create an isolated virtual environment and install the exact package release:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install \
-  https://github.com/tannhorn/morana/releases/download/v0.1.0/morana-0.1.0.tar.gz
+python -m pip install "morana==0.1.0"
 ```
 
-The GitHub release page publishes the archive checksum. To verify the download
-before installation, compare its SHA-256 digest with the accompanying
+The GitHub release remains the canonical source-release location and publishes
+the source archive checksum. To verify that archive before installation,
+compare its SHA-256 digest with the accompanying
 `morana-0.1.0.tar.gz.sha256` file.
 
 The installation brings in Morana's runtime dependencies from
