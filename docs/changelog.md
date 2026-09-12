@@ -12,7 +12,9 @@ evidence, and upgrade actions. Current package behavior is documented in the
 [verification guide](verification.md), and source-derived
 [Python reference](reference/index.md). Release-note candidates remain in
 committed change fragments during development and enter this page only as part
-of a dated release.
+of a dated release. Subscribe to the
+[Morana releases RSS feed](https://pypi.org/rss/project/morana/releases.xml)
+to receive new-version notifications when installable packages are published.
 
 ## 0.1.0 - 2026-09-09
 
