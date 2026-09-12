@@ -52,6 +52,8 @@ jobs:
         run: python -m compileall src examples tests
       - name: Check spelling and terminology
         run: python scripts/check_spelling_and_terms.py
+      - name: Check change fragments
+        run: python scripts/check_change_fragments.py
       - name: Check licensing metadata
         run: reuse lint
       - name: Validate citation metadata

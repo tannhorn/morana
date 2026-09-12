@@ -1,8 +1,8 @@
 # Changelog
 
-This page records dated releases and notable unreleased changes that help a
-package user decide whether or how to install, upgrade, or use Morana. Entries
-follow the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) categories
+This page records dated releases that help a package user decide whether or how
+to install, upgrade, or use Morana. Entries follow the
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) categories
 where they apply: Added, Changed, Deprecated, Removed, Fixed, and Security.
 Routine documentation corrections, citation-metadata updates, repository
 maintenance, and maintainer-only tooling do not receive separate entries.
@@ -10,9 +10,9 @@ Each release section summarizes capabilities, limitations, verification
 evidence, and upgrade actions. Current package behavior is documented in the
 [modeling and solver workflow](modeling_workflow.md),
 [verification guide](verification.md), and source-derived
-[Python reference](reference/index.md).
-
-## Unreleased
+[Python reference](reference/index.md). Release-note candidates remain in
+committed change fragments during development and enter this page only as part
+of a dated release.
 
 ## 0.1.0 - 2026-09-09
 

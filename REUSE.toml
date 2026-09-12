@@ -13,6 +13,7 @@ path = [
     "tests/**",
     "examples/**",
     "scripts/**",
+    "changes/**",
     "docs/**",
     "overrides/**",
 ]

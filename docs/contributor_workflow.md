@@ -56,6 +56,13 @@ schema:
 cffconvert --validate -i CITATION.cff
 ```
 
+After adding or editing a release-note fragment or changing its allocation
+counter, validate the fragment collection:
+
+```bash
+python scripts/check_change_fragments.py
+```
+
 After changing tracked documentation, public NumPy-style docstrings, exported
 API declarations, or MkDocs configuration, build the complete site strictly:
 
@@ -80,9 +87,10 @@ The reference-export check compares the runtime `__all__` declarations of
 mkdocstrings IDs in their generated reference pages, rejecting missing runtime
 attributes, missing anchors, and duplicate anchors.
 The spelling and terminology check scans authored documentation, public source
-and docstrings, maintained examples, and maintenance scripts. Add legitimate
-technical words to `scripts/spelling_vocabulary.txt`; keep discouraged forms
-and their canonical replacements in `scripts/terminology_rules.toml`.
+and docstrings, maintained examples, release-note fragments, and maintenance
+scripts. Add legitimate technical words to `scripts/spelling_vocabulary.txt`;
+keep discouraged forms and their canonical replacements in
+`scripts/terminology_rules.toml`.
 
 After a substantial change, also run every maintained example in scope.
 The routine suite is:
@@ -126,18 +134,68 @@ Morana release. Ordinary pull requests may update project-level documentation
 or contributor automation. A change that affects a specific release—the
 package version, `CITATION.cff` version or version DOI, dated changelog entry,
 release URL, source archive, tag, or GitHub and Zenodo publication—must use the
-explicit release procedure below. Record relevant public changes in the
-`Unreleased` changelog section until that release is prepared, but only when
-they help package users decide whether or how to install, upgrade, or use
-Morana. Do not add separate entries for routine documentation corrections,
-citation-metadata updates, repository maintenance, CI changes, or
-maintainer-only tooling. When the availability of an already released version
-changes, update that dated release entry instead of describing the event as an
-unreleased package change.
+explicit release procedure below. During development, record relevant public
+changes as the committed fragments described below instead of editing the
+changelog. When the availability of an already released version changes,
+update that dated release entry instead of creating a fragment for a future
+release.
 
 Morana currently uses sole-maintainer release approval. The maintainer may
 approve publication without a second-person review, but the protected
 pull-request and verification gates still apply.
+
+## Change fragments
+
+Change fragments are temporary, reviewable inputs to the next changelog, not a
+second authority for implemented behavior. Add one with the implementation of
+each notable user-facing capability, behavior or compatibility change, fix,
+deprecation, removal, or security correction. Do not add fragments for routine
+documentation corrections, citation metadata, repository maintenance, CI,
+tests, internal planning, or maintainer-only tooling.
+
+Fragments live under `changes/` and use
+`NNNNNN.category.md`, where `NNNNNN` is a six-digit repository sequence number
+and `category` is one of `added`, `changed`, `deprecated`, `removed`, `fixed`,
+or `security`. Allocate the value currently stored in
+`changes/next_id.txt`, then increment that file in the same change. Never
+decrement the counter, fill an old gap, or reuse the number of a released
+fragment. Sequence numbers identify fragments; GitHub issue numbers remain
+separate metadata.
+
+Each fragment consists of YAML front matter followed by concise Markdown:
+
+```markdown
+---
+issues: []
+breaking: false
+upgrade: null
+documentation:
+  - docs/modeling_workflow.md
+---
+Added a reproducible many-group performance workflow for evaluating
+finite-volume solver scaling on deterministic synthetic workloads.
+```
+
+The four metadata fields are required:
+
+- `issues` is a list of positive GitHub issue numbers and may be empty.
+- `breaking` is `true` only when existing users may need to change their code,
+  data, or workflow.
+- `upgrade` is `null` when no action is needed; otherwise it is a short,
+  actionable instruction. A breaking fragment must provide one.
+- `documentation` lists repository-relative paths to the tracked pages or
+  public source files that own the changed behavior and may be empty when no
+  such page applies. Every listed path must exist.
+
+Write the body for package users and describe observable impact rather than
+commits, file edits, tests, or implementation mechanics. Keep related effects
+in one fragment when they will naturally form one release-note item. A fragment
+may be revised or combined before release if its implementation changes.
+
+Run `python scripts/check_change_fragments.py` before submitting the change.
+The checker validates filenames, allocation state, metadata types, referenced
+paths, and nonempty bodies. The ordinary test suite and CI also exercise this
+check.
 
 ## Publishing package distributions
 
@@ -165,6 +223,15 @@ are immutable: do not rerun a successful upload or move its tag.
 Only the following explicit procedure turns an exact `main` commit into a
 Morana release through GitHub and Zenodo. It is separate from ordinary `main`
 integration.
+
+Before opening that release pull request, inspect the Git range since the
+previous tag and reconcile it with every pending fragment. Account for notable
+public changes, combine related fragments into concise user-facing entries,
+and retain any required upgrade actions and important limitations. Add the
+result as the new dated section of `docs/changelog.md`; do not mechanically
+concatenate fragment bodies. Delete all consumed fragment files in the same
+release change, leave `changes/next_id.txt` at its current value, and run
+`python scripts/check_change_fragments.py` again.
 
 Prepare a release on `devel`, then use a pull request from `devel` into `main`
 to integrate the package version, dated changelog, citation metadata,

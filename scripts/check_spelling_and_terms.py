@@ -23,8 +23,9 @@ AUTHORED_TREES = {
     REPOSITORY_ROOT / "src": frozenset({".py"}),
     REPOSITORY_ROOT / "examples": frozenset({".py", ".sh"}),
     REPOSITORY_ROOT / "scripts": frozenset({".py", ".sh"}),
+    REPOSITORY_ROOT / "changes": frozenset({".md"}),
 }
-TERMINOLOGY_TREES = frozenset({"docs", "src", "examples"})
+TERMINOLOGY_TREES = frozenset({"docs", "src", "examples", "changes"})
 
 
 @dataclass(frozen=True)
