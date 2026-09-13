@@ -16,8 +16,9 @@ for example in \
     multigroup_keff \
     fixed_source_mms \
     keff_mms \
-    solver_comparison
+    solver_comparison \
+    many_group_performance
 do
-    echo "Running examples/$example.py"
+    echo "Running examples/$example"
     python -m "examples.$example"
 done

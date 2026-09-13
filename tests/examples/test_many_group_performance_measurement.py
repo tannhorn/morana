@@ -11,7 +11,7 @@ import tempfile
 
 import pytest
 
-from examples.many_group_performance import measurement, orchestration, results
+from examples.many_group_performance import measurement, orchestration, results, runner
 
 
 @pytest.fixture(scope="module")
@@ -279,3 +279,59 @@ def test_factor_views_are_inspected_after_peak_rss_is_frozen(monkeypatch) -> Non
         6, 2, requested_threads=1, kind="measurement", repetition=0
     )
     assert events == ["usage", "usage", "factor"]
+
+
+def test_maintained_mode_worker_sequences_are_exact() -> None:
+    """Modes retain the resolved warm-up, repetition, and profiling policy."""
+    smoke = runner._requests("smoke")
+    assert len(smoke) == 3
+    assert [request.retain for request in smoke] == [False, True, True]
+    assert [request.kind for request in smoke] == [
+        "measurement",
+        "measurement",
+        "profile",
+    ]
+
+    full = runner._requests("full")
+    assert len(full) == 57
+    assert sum(request.retain for request in full) == 46
+    assert sum(request.kind == "profile" for request in full) == 12
+    endpoint = [
+        request
+        for request in full
+        if (request.groups, request.axial_layers) == (72, 20)
+    ]
+    assert [(request.kind, request.retain) for request in endpoint] == [
+        ("measurement", True),
+        ("profile", True),
+    ]
+
+    thread_screen = runner._requests("thread-screen")
+    assert len(thread_screen) == 16
+    assert sum(request.retain for request in thread_screen) == 12
+    assert {request.requested_threads for request in thread_screen} == {1, 2, 4, 6}
+
+
+def test_smoke_runner_discards_warmup_and_checkpoints_results(
+    tmp_path: Path,
+    monkeypatch,
+    measured_observation: dict[str, object],
+    profile_observation: dict[str, object],
+) -> None:
+    """The maintained smoke path writes only its measurement and profile."""
+    launched = []
+    returned = iter((measured_observation, measured_observation, profile_observation))
+
+    def fake_launch(*args, **kwargs):
+        launched.append((args, kwargs))
+        return deepcopy(next(returned))
+
+    monkeypatch.setattr(runner, "launch_observation", fake_launch)
+    output_path = runner.run("smoke", tmp_path)
+    document = results.read_document(output_path)
+    assert len(launched) == 3
+    assert len(document["workloads"]) == 1
+    assert [record["kind"] for record in document["observations"]] == [
+        "measurement",
+        "profile",
+    ]

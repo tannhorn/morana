@@ -19,8 +19,9 @@ Run them from a checkout that matches the Morana version being evaluated.
 The repository
 [`run_all.sh`](https://github.com/tannhorn/morana/blob/main/examples/run_all.sh)
 runner executes the routine examples in this catalog, including the
-verification studies. The computationally expensive OpenMC comparison is the
-sole exception; it has a separate staged workflow.
+verification studies. The computationally expensive OpenMC comparison and
+long many-group performance modes are exceptions; they have separate explicit
+commands.
 
 ```bash
 examples/run_all.sh
@@ -185,6 +186,29 @@ artifacts.
 ```bash
 python -m examples.solver_comparison
 ```
+
+### Many-group performance workflow
+
+The maintained many-group performance package exercises the current direct
+finite-volume criticality path with deterministic synthetic cross sections.
+Its default smoke mode checks fresh-process measurement, profiling, numerical
+acceptance, and checked JSON output without serving as baseline performance
+evidence. It is included in `examples/run_all.sh`.
+
+```bash
+python -m examples.many_group_performance
+```
+
+The complete Cartesian baseline and workstation thread screen are deliberately
+opt-in because they are long-running:
+
+```bash
+python -m examples.many_group_performance full
+python -m examples.many_group_performance thread-screen
+```
+
+All modes write checked raw observations below
+`artifacts/examples/many_group_performance/` by default.
 
 ## Import and compare external material data
 
