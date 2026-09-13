@@ -1,6 +1,6 @@
 """Frozen synthetic many-group workload for finite-volume performance studies.
 
-This file owns the scientific workload definition only.  It deliberately
+This module owns the scientific workload definition only.  It deliberately
 does not measure time or memory and does not import external data.  The
 cross sections are deterministic synthetic values intended to exercise
 Morana's many-group transfer assembly; they are not evaluated nuclear data or

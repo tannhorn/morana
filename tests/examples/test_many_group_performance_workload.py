@@ -111,7 +111,7 @@ def test_fission_transfer_support_shape_and_density_at_72_groups() -> None:
 
 @pytest.mark.parametrize("groups", workload.GROUP_COUNTS)
 def test_frozen_array_digests(groups: int) -> None:
-    """Every final generated array matches its version-one frozen digest."""
+    """Every final generated array matches its frozen digest."""
     assert (
         workload.generated_array_digests(groups)
         == workload.FROZEN_ARRAY_DIGESTS[groups]
