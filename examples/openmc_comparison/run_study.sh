@@ -17,16 +17,18 @@ if ! command -v python >/dev/null 2>&1; then
 fi
 
 script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-runner="${script_directory}/run_study_case.py"
+repository_root="$(cd -- "${script_directory}/../.." && pwd)"
+runner="examples.openmc_comparison.run_study_case"
+cd "${repository_root}"
 
 for argument in "$@"; do
     if [[ "${argument}" == "-h" || "${argument}" == "--help" ]]; then
-        python "${runner}" --help
+        python -m "${runner}" --help
         exit 0
     fi
 done
 
 conda run --no-capture-output -n "${OPENMC_CONDA_ENV}" \
-    python "${runner}" "$@" --stage mgxs
+    python -m "${runner}" "$@" --stage mgxs
 
-python "${runner}" "$@" --stage morana
+python -m "${runner}" "$@" --stage morana

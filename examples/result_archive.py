@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from multigroup_fixed_source import build_configuration
+from examples.multigroup_fixed_source import build_configuration
 from morana import Result
 from morana.solvers.finite_volume import solve_fixed_source
 

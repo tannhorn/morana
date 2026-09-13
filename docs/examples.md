@@ -36,7 +36,7 @@ is the executable source rendered in the
 the reflected six-cell ring and reports its uniform analytic flux.
 
 ```bash
-python examples/quickstart.py
+python -m examples.quickstart
 ```
 
 ## Build and inspect geometry
@@ -48,7 +48,7 @@ writes full-lattice and axial-slice Matplotlib/Plotly output,
 planar VTU data, and material-layout VTM data.
 
 ```bash
-python examples/mesh_plotting.py
+python -m examples.mesh_plotting
 ```
 
 ### Domain-face inspection
@@ -59,7 +59,7 @@ slice-local active IDs, and representative `internal`, `outer`, and
 `to_excluded` face classifications.
 
 ```bash
-python examples/material_mesh_domain_faces.py
+python -m examples.material_mesh_domain_faces
 ```
 
 ### Mixed boundary regions
@@ -71,7 +71,7 @@ Robin, partial-current return, and incoming-current conditions all resolve on
 represented faces.
 
 ```bash
-python examples/mixed_boundary_regions.py
+python -m examples.mixed_boundary_regions
 ```
 
 ## Solve and inspect responses
@@ -87,7 +87,7 @@ multiplying-scatter cases. It reports group flux sums with signed
 axial-slice PNG/HTML and VTM artifacts for each case.
 
 ```bash
-python examples/multigroup_fixed_source.py
+python -m examples.multigroup_fixed_source
 ```
 
 ### Multigroup criticality
@@ -105,7 +105,7 @@ data includes groupwise `kappa_sigma_f`; each completed result is normalized to
 100 kW.
 
 ```bash
-python examples/multigroup_keff.py
+python -m examples.multigroup_keff
 ```
 
 ### Result archive
@@ -116,7 +116,7 @@ non-pickle `.morana-result` archive, reloads it through `Result.load_from_disk`,
 and checks every group and flux layer against the original result.
 
 ```bash
-python examples/result_archive.py
+python -m examples.result_archive
 ```
 
 ## Verify and compare
@@ -132,7 +132,7 @@ output. The [one-dimensional axial core-reflector case](one_group_keff.md)
 derives the reference solution and records the maintained comparison.
 
 ```bash
-python examples/one_group_keff.py
+python -m examples.one_group_keff
 ```
 
 ### Fixed-source manufactured solution
@@ -147,7 +147,7 @@ evidence are in the
 [fixed-source manufactured-solution case](fixed_source_mms.md).
 
 ```bash
-python examples/fixed_source_mms.py
+python -m examples.fixed_source_mms
 ```
 
 ### k-effective manufactured solution
@@ -162,7 +162,7 @@ convergence evidence are in the
 [k-effective manufactured-solution case](keff_mms.md).
 
 ```bash
-python examples/keff_mms.py
+python -m examples.keff_mms
 ```
 
 ### Finite-volume strategy comparison
@@ -183,7 +183,7 @@ set and write a `strategy_comparison.csv` evidence table beside its usual
 artifacts.
 
 ```bash
-python examples/solver_comparison.py
+python -m examples.solver_comparison
 ```
 
 ## Import and compare external material data

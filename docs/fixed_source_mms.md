@@ -461,14 +461,14 @@ require more refinement levels and a quadrature-sensitivity study.
 Run the maintained case from the repository root:
 
 ```bash
-python examples/fixed_source_mms.py
+python -m examples.fixed_source_mms
 ```
 
 To repeat the full refinement study with every supported direct and GMRES
 linear policy, add `--compare-strategies`:
 
 ```bash
-python examples/fixed_source_mms.py --compare-strategies
+python -m examples.fixed_source_mms --compare-strategies
 ```
 
 Each policy is checked independently against the manufactured flux and the
@@ -483,7 +483,7 @@ The checked-in convergence and flux figures are regenerated from the same
 executable study with:
 
 ```bash
-python examples/fixed_source_mms.py --documentation-assets-dir docs/assets
+python -m examples.fixed_source_mms --documentation-assets-dir docs/assets
 ```
 
 The recorded direct-solve results are:

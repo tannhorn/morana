@@ -311,14 +311,14 @@ The executable case requires:
 Run the maintained case from the repository root:
 
 ```bash
-python examples/keff_mms.py
+python -m examples.keff_mms
 ```
 
 To repeat the full refinement study with the maintained direct/GMRES and
 fixed-Wielandt strategy set, add `--compare-strategies`:
 
 ```bash
-python examples/keff_mms.py --compare-strategies
+python -m examples.keff_mms --compare-strategies
 ```
 
 Each policy is checked independently against the manufactured eigenpair and
@@ -335,7 +335,7 @@ informational setup/solve timing and outer/inner counts, run
 Regenerate the checked-in convergence and flux figures with:
 
 ```bash
-python examples/keff_mms.py --documentation-assets-dir docs/assets
+python -m examples.keff_mms --documentation-assets-dir docs/assets
 ```
 
 The recorded direct-solve results are:

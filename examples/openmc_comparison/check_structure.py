@@ -3,7 +3,7 @@
 Run this OpenMC-only structural check from the repository root with an active
 Python environment that provides OpenMC:
 
-``python examples/openmc_comparison/check_structure.py``
+``python -m examples.openmc_comparison.check_structure``
 
 It performs no particle transport and writes no artifacts.
 """
@@ -15,8 +15,12 @@ from math import isclose, sqrt
 
 import openmc
 
-from case import build_mini_core_model
-from geometry import full_pitch_hex_vertices, lattice_pitch_cm, mini_core_coordinates
+from examples.openmc_comparison.case import build_mini_core_model
+from examples.openmc_comparison.geometry import (
+    full_pitch_hex_vertices,
+    lattice_pitch_cm,
+    mini_core_coordinates,
+)
 
 _EXPECTED_CORE_CELLS = 61
 _EXPECTED_BOUNDARY_EDGES = 54

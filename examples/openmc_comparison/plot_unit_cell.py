@@ -1,13 +1,19 @@
 """Render the comparison unit-cell geometry with Matplotlib."""
 
+# Matplotlib configuration must precede its imports.
+# pylint: disable=wrong-import-order,wrong-import-position
+
 from __future__ import annotations
 
 import argparse
 from math import hypot
 from pathlib import Path
 
-from artifact_paths import ARTIFACT_ROOT, configure_matplotlib_cache
-from geometry import (
+from examples.openmc_comparison.artifact_paths import (
+    ARTIFACT_ROOT,
+    configure_matplotlib_cache,
+)
+from examples.openmc_comparison.geometry import (
     FUEL_DIAMETER_IN,
     FUEL_ELEMENT_PITCH_IN,
     FUEL_ROD_OUTER_DIAMETER_IN,
@@ -29,7 +35,7 @@ from geometry import (
     wire_to_channel_wall_clearance_in,
     wire_centers,
 )
-from plotting import material_color_hex
+from examples.openmc_comparison.plotting import material_color_hex
 
 DEFAULT_OUTPUT = ARTIFACT_ROOT / "unit_cell_matplotlib.png"
 configure_matplotlib_cache()

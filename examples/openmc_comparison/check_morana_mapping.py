@@ -2,7 +2,7 @@
 
 Run from the repository root:
 
-``python examples/openmc_comparison/check_morana_mapping.py``
+``python -m examples.openmc_comparison.check_morana_mapping``
 
 The check uses a deliberately nonuniform diagnostic value. Every plotted cell
 labels its source ``(q, r)`` coordinate, Morana planar ID, and diagnostic
@@ -11,7 +11,7 @@ running a transport or diffusion calculation.
 """
 
 # Matplotlib configuration must precede its imports.
-# pylint: disable=wrong-import-position
+# pylint: disable=wrong-import-order,wrong-import-position
 
 from __future__ import annotations
 
@@ -19,8 +19,11 @@ import argparse
 from math import isclose
 from pathlib import Path
 
-from artifact_paths import ARTIFACT_ROOT, configure_matplotlib_cache
-from geometry import (
+from examples.openmc_comparison.artifact_paths import (
+    ARTIFACT_ROOT,
+    configure_matplotlib_cache,
+)
+from examples.openmc_comparison.geometry import (
     NUM_CORE_RINGS,
     lattice_pitch_cm,
     mini_core_coordinates,

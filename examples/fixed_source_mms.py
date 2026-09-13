@@ -35,7 +35,7 @@ from matplotlib.patches import Patch  # pylint: disable=wrong-import-position
 from matplotlib.ticker import NullLocator  # pylint: disable=wrong-import-position
 import numpy as np
 
-from _hex_z_mms import (  # pylint: disable=wrong-import-position
+from examples._hex_z_mms import (  # pylint: disable=wrong-import-position
     APOTHEM,
     HEIGHT,
     LEVELS,

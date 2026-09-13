@@ -304,8 +304,8 @@ python -m venv "$release_test_dir/venv"
 "$release_test_dir/venv/bin/python" -c \
   'import sys; from importlib.metadata import version; import morana; assert version("morana") == sys.argv[1]' \
   "$release_version"
-"$release_test_dir/venv/bin/python" examples/quickstart.py
-"$release_test_dir/venv/bin/python" examples/result_archive.py \
+"$release_test_dir/venv/bin/python" -m examples.quickstart
+"$release_test_dir/venv/bin/python" -m examples.result_archive \
   --output-dir "$release_test_dir/output"
 ```
 
@@ -407,10 +407,10 @@ The maintained verification examples generate their tracked result figures
 when given the documentation asset directory:
 
 ```bash
-python examples/one_group_keff.py --documentation-assets-dir docs/assets
-python examples/fixed_source_mms.py --documentation-assets-dir docs/assets
-python examples/keff_mms.py --documentation-assets-dir docs/assets
-python examples/openmc_comparison/plot_documentation.py \
+python -m examples.one_group_keff --documentation-assets-dir docs/assets
+python -m examples.fixed_source_mms --documentation-assets-dir docs/assets
+python -m examples.keff_mms --documentation-assets-dir docs/assets
+python -m examples.openmc_comparison.plot_documentation \
   --documentation-assets-dir docs/assets
 ```
 

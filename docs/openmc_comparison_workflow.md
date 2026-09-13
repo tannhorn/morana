@@ -46,8 +46,8 @@ Render the unit cell directly with Matplotlib and verify the coordinate
 mapping without OpenMC:
 
 ```bash
-python examples/openmc_comparison/plot_unit_cell.py
-python examples/openmc_comparison/check_morana_mapping.py
+python -m examples.openmc_comparison.plot_unit_cell
+python -m examples.openmc_comparison.check_morana_mapping
 ```
 
 The mapping diagnostic labels every source `(q, r)` coordinate, Morana planar
@@ -58,15 +58,15 @@ The deterministic comparison-reader check also needs neither OpenMC nor
 persistent artifacts:
 
 ```bash
-python examples/openmc_comparison/check_comparison_reader.py
+python -m examples.openmc_comparison.check_comparison_reader
 ```
 
 With OpenMC available, check the shared-surface CSG structure and render the
 unit cell and mini-core without running particle transport:
 
 ```bash
-python examples/openmc_comparison/check_structure.py
-python examples/openmc_comparison/render_geometry.py
+python -m examples.openmc_comparison.check_structure
+python -m examples.openmc_comparison.render_geometry
 ```
 
 ## Generate the CE reference
@@ -78,7 +78,7 @@ request:
 
 ```bash
 conda run -n "$OPENMC_CONDA_ENV" \
-  python examples/openmc_comparison/generate_ce_reference.py
+  python -m examples.openmc_comparison.generate_ce_reference
 ```
 
 The default output is
@@ -101,7 +101,7 @@ CASMO-70 and condenses the same statepoint to CASMO-40, CASMO-25, and CASMO-8:
 
 ```bash
 conda run -n "$OPENMC_CONDA_ENV" \
-  python examples/openmc_comparison/generate_mgxs.py
+  python -m examples.openmc_comparison.generate_mgxs
 ```
 
 The defaults request 20 million active histories with seed 31415 and write
@@ -128,7 +128,7 @@ writes:
 When OpenMC and Morana share the active environment, run both stages directly:
 
 ```bash
-python examples/openmc_comparison/run_study_case.py \
+python -m examples.openmc_comparison.run_study_case \
   --active-histories 20000000 \
   --seed 31415 \
   --group-structures CASMO-70 \
@@ -177,7 +177,7 @@ The axial screen reuses those existing libraries and solves CASMO-25 on the
 documented meshes with the active Morana interpreter:
 
 ```bash
-python examples/openmc_comparison/run_study_case.py \
+python -m examples.openmc_comparison.run_study_case \
   --stage morana \
   --active-histories 20000000 \
   --seed 31415 \
@@ -225,7 +225,7 @@ Morana summary with a qualified CE reference. Pass the candidate first and
 reference second. For example:
 
 ```bash
-python examples/openmc_comparison/compare_study_cases.py \
+python -m examples.openmc_comparison.compare_study_cases \
   artifacts/examples/openmc_comparison/study/morana/20m_seed31415/casmo-40/z20/summary.json \
   artifacts/examples/openmc_comparison/study/morana/20m_seed31415/casmo-70/z20/summary.json
 ```
@@ -233,7 +233,7 @@ python examples/openmc_comparison/compare_study_cases.py \
 To compare with CE and save the checked comparison:
 
 ```bash
-python examples/openmc_comparison/compare_study_cases.py \
+python -m examples.openmc_comparison.compare_study_cases \
   artifacts/examples/openmc_comparison/study/morana/40m_seed31415/casmo-70/z20/summary.json \
   artifacts/examples/openmc_comparison/ce_reference/100m_seed31415_profiles_z100/reference_summary.json \
   --output artifacts/examples/openmc_comparison/study/comparisons/casmo-70-z20.json
@@ -250,7 +250,7 @@ After the complete local study exists at its default paths, write the four
 tracked documentation figures directly to the documentation asset directory:
 
 ```bash
-python examples/openmc_comparison/plot_documentation.py \
+python -m examples.openmc_comparison.plot_documentation \
   --documentation-assets-dir docs/assets
 ```
 

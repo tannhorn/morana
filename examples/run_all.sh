@@ -6,18 +6,18 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo_root"
 
 for example in \
-    material_mesh_domain_faces.py \
-    mesh_plotting.py \
-    quickstart.py \
-    mixed_boundary_regions.py \
-    result_archive.py \
-    one_group_keff.py \
-    multigroup_fixed_source.py \
-    multigroup_keff.py \
-    fixed_source_mms.py \
-    keff_mms.py \
-    solver_comparison.py
+    material_mesh_domain_faces \
+    mesh_plotting \
+    quickstart \
+    mixed_boundary_regions \
+    result_archive \
+    one_group_keff \
+    multigroup_fixed_source \
+    multigroup_keff \
+    fixed_source_mms \
+    keff_mms \
+    solver_comparison
 do
-    echo "Running examples/$example"
-    python "examples/$example"
+    echo "Running examples/$example.py"
+    python -m "examples.$example"
 done

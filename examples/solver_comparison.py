@@ -11,9 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from time import perf_counter
 
-from _hex_z_mms import volume_weighted_relative_l2
-import fixed_source_mms
-import keff_mms
+from examples import fixed_source_mms, keff_mms
+from examples._hex_z_mms import volume_weighted_relative_l2
 
 from morana import FissionSourceNormalization
 from morana.solvers.finite_volume import solve_fixed_source, solve_keff

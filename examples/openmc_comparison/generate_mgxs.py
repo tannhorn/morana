@@ -4,7 +4,7 @@ Run from the repository root with an active Python environment that provides
 OpenMC. The continuous-energy transport calculation and every generated OpenMC
 artifact are written outside the tracked source tree by default:
 
-``python examples/openmc_comparison/generate_mgxs.py``
+``python -m examples.openmc_comparison.generate_mgxs``
 
 One transport calculation tallies the CASMO-70 group structure. OpenMC then
 condenses those results to CASMO-8, CASMO-25, and CASMO-40. Each exported
@@ -23,9 +23,12 @@ import warnings
 
 import openmc
 
-from artifact_paths import ARTIFACT_ROOT
-from case import build_unit_cell_model, configure_eigenvalue_settings
-from mgxs_generation import (
+from examples.openmc_comparison.artifact_paths import ARTIFACT_ROOT
+from examples.openmc_comparison.case import (
+    build_unit_cell_model,
+    configure_eigenvalue_settings,
+)
+from examples.openmc_comparison.mgxs_generation import (
     DEFAULT_BATCHES,
     DEFAULT_GENERATIONS_PER_BATCH,
     DEFAULT_INACTIVE,
@@ -36,8 +39,8 @@ from mgxs_generation import (
     SUPPORTED_GROUP_STRUCTURES,
     TALLIED_GROUP_STRUCTURE,
 )
-from specification import TEMPERATURE_K
-from run_settings import newest_compatible_openmc_statepoint
+from examples.openmc_comparison.run_settings import newest_compatible_openmc_statepoint
+from examples.openmc_comparison.specification import TEMPERATURE_K
 
 DEFAULT_OUTPUT_DIR = ARTIFACT_ROOT / "mgxs"
 MGXS_TYPES = (
