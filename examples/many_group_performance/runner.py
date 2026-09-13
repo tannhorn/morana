@@ -15,6 +15,7 @@ from examples.many_group_performance.orchestration import (
 from examples.many_group_performance.results import (
     build_document,
     observation_metrics,
+    read_document,
     summarize_observations,
     write_document,
 )
@@ -22,6 +23,8 @@ from examples.many_group_performance.results import (
 DEFAULT_OUTPUT_DIR = Path("artifacts/examples/many_group_performance")
 _THREAD_COUNTS = (1, 2, 4, 6)
 _THREAD_SCREEN_WORKLOAD = (72, 10)
+_FULL_ENDPOINT = (72, 20)
+_FULL_ENDPOINT_WARMUP = (72, 5)
 
 
 @dataclass(frozen=True)
@@ -51,8 +54,12 @@ def _requests(mode: str) -> tuple[WorkerRequest, ...]:
         )
     if mode == "full":
         requests = []
-        endpoint = (72, 20)
+        endpoint = _FULL_ENDPOINT
         for groups, layers in workload.baseline_workloads():
+            if (groups, layers) == endpoint:
+                requests.append(
+                    WorkerRequest(*_FULL_ENDPOINT_WARMUP, 1, "measurement", 0, False)
+                )
             if (groups, layers) != endpoint:
                 requests.append(
                     WorkerRequest(groups, layers, 1, "measurement", 0, False)
@@ -77,6 +84,59 @@ def _requests(mode: str) -> tuple[WorkerRequest, ...]:
             )
         return tuple(requests)
     raise ValueError("mode must be 'smoke', 'full', or 'thread-screen'")
+
+
+def _request_observation_id(request: WorkerRequest) -> str:
+    """Return the deterministic identifier for one retained worker request."""
+    repetition = "none" if request.repetition is None else str(request.repetition)
+    return (
+        f"g{request.groups}-z{request.axial_layers}-t{request.requested_threads}-"
+        f"{request.kind}-{repetition}"
+    )
+
+
+def _resume_requests(
+    requests: tuple[WorkerRequest, ...], observations: Iterable[dict[str, object]]
+) -> tuple[WorkerRequest, ...]:
+    """Return missing full-baseline work after checking retained identities.
+
+    Resume preserves valid retained observations and repeats only the discarded
+    warm-ups that immediately precede missing measurements. This applies to
+    every maintained mode.
+    """
+    retained = tuple(request for request in requests if request.retain)
+    expected_ids = {_request_observation_id(request) for request in retained}
+    observed_ids = {str(observation["observation_id"]) for observation in observations}
+    unexpected_ids = observed_ids - expected_ids
+    if unexpected_ids:
+        raise ValueError(
+            "cannot resume full baseline with unexpected observations: "
+            f"{sorted(unexpected_ids)}"
+        )
+    missing = tuple(
+        request
+        for request in retained
+        if _request_observation_id(request) not in observed_ids
+    )
+    missing_ids = {_request_observation_id(request) for request in missing}
+    resumed = []
+    for index, request in enumerate(requests):
+        if request.retain:
+            if _request_observation_id(request) in missing_ids:
+                resumed.append(request)
+            continue
+        until_next_warmup = []
+        for candidate in requests[index + 1 :]:
+            if not candidate.retain:
+                break
+            until_next_warmup.append(candidate)
+        if any(
+            candidate.kind == "measurement"
+            and _request_observation_id(candidate) in missing_ids
+            for candidate in until_next_warmup
+        ):
+            resumed.append(request)
+    return tuple(resumed)
 
 
 def _workloads(requests: Iterable[WorkerRequest]) -> list[dict[str, object]]:
@@ -140,19 +200,31 @@ def run(
     *,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     address_space_limit_bytes: int = DEFAULT_ADDRESS_SPACE_LIMIT_BYTES,
+    resume: bool = False,
 ) -> Path:
     """Execute one maintained mode and return its checked JSON path."""
     requests = _requests(mode)
     workloads = _workloads(requests)
-    observations: list[dict[str, object]] = []
     output_path = output_dir / f"{mode.replace('-', '_')}.json"
+    if resume:
+        existing = read_document(output_path)
+        if existing["workloads"] != workloads:
+            raise ValueError(
+                "cannot resume: stored workloads differ from this checkout"
+            )
+        observations = list(existing["observations"])
+        requests = _resume_requests(requests, observations)
+    else:
+        observations = []
     output_dir.mkdir(parents=True, exist_ok=True)
-    write_document(
-        output_path,
-        build_document(workloads=workloads, observations=observations),
-    )
+    if not resume:
+        write_document(
+            output_path,
+            build_document(workloads=workloads, observations=observations),
+        )
 
-    print(f"Running many-group performance mode: {mode}")
+    disposition = "resuming" if resume else "running"
+    print(f"{disposition.capitalize()} many-group performance mode: {mode}")
     for index, request in enumerate(requests, start=1):
         disposition = "retained" if request.retain else "discarded warm-up"
         print(
@@ -205,6 +277,11 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_ADDRESS_SPACE_LIMIT_BYTES / 1024**3,
         help="address-space ceiling applied before numerical-library imports",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="append only missing observations to the selected mode's JSON",
+    )
     return parser.parse_args()
 
 
@@ -216,4 +293,5 @@ def main() -> None:
         arguments.output_dir,
         timeout_seconds=arguments.timeout_seconds,
         address_space_limit_bytes=int(arguments.address_space_limit_gib * 1024**3),
+        resume=arguments.resume,
     )

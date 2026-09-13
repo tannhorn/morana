@@ -207,6 +207,13 @@ python -m examples.many_group_performance full
 python -m examples.many_group_performance thread-screen
 ```
 
+If any performance mode stops after writing a partial JSON record, resume only
+its missing observations (rather than replacing the completed ones) with:
+
+```bash
+python -m examples.many_group_performance full --resume
+```
+
 All modes write checked raw observations below
 `artifacts/examples/many_group_performance/` by default.
 

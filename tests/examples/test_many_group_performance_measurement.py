@@ -293,7 +293,7 @@ def test_maintained_mode_worker_sequences_are_exact() -> None:
     ]
 
     full = runner._requests("full")
-    assert len(full) == 57
+    assert len(full) == 58
     assert sum(request.retain for request in full) == 46
     assert sum(request.kind == "profile" for request in full) == 12
     endpoint = [
@@ -305,11 +305,64 @@ def test_maintained_mode_worker_sequences_are_exact() -> None:
         ("measurement", True),
         ("profile", True),
     ]
+    endpoint_index = full.index(endpoint[0])
+    assert full[endpoint_index - 1] == runner.WorkerRequest(
+        72, 5, 1, "measurement", 0, False
+    )
 
     thread_screen = runner._requests("thread-screen")
     assert len(thread_screen) == 16
     assert sum(request.retain for request in thread_screen) == 12
     assert {request.requested_threads for request in thread_screen} == {1, 2, 4, 6}
+
+
+def test_full_resume_runs_only_missing_endpoint_after_smaller_warmup() -> None:
+    """A partial full record resumes its endpoint without replaying the matrix."""
+    full = runner._requests("full")
+    completed = [
+        {"observation_id": runner._request_observation_id(request)}
+        for request in full
+        if request.retain and (request.groups, request.axial_layers) != (72, 20)
+    ]
+
+    resumed = runner._resume_requests(full, completed)
+
+    assert resumed[0] == runner.WorkerRequest(72, 5, 1, "measurement", 0, False)
+    endpoint_requests = [
+        (request.groups, request.axial_layers, request.kind) for request in resumed[1:]
+    ]
+    assert endpoint_requests == [
+        (72, 20, "measurement"),
+        (72, 20, "profile"),
+    ]
+
+
+def test_resume_rejects_unexpected_observations_and_skips_completed_work() -> None:
+    """Resume retains only recognized observations and skips completed work."""
+    full = runner._requests("full")
+    completed = [
+        {"observation_id": runner._request_observation_id(request)}
+        for request in full
+        if request.retain
+    ]
+
+    assert runner._resume_requests(full, completed) == ()
+    with pytest.raises(ValueError, match="unexpected"):
+        runner._resume_requests(full, [{"observation_id": "unknown"}])
+
+
+def test_resume_replays_required_warmups_for_every_mode() -> None:
+    """Resume handles a partial smoke record without relying on full-mode rules."""
+    smoke = runner._requests("smoke")
+    profile = next(request for request in smoke if request.kind == "profile")
+    measurement = next(
+        request for request in smoke if request.retain and request.kind == "measurement"
+    )
+
+    assert runner._resume_requests(smoke, []) == smoke
+    assert runner._resume_requests(
+        smoke, [{"observation_id": runner._request_observation_id(measurement)}]
+    ) == (profile,)
 
 
 def test_smoke_runner_discards_warmup_and_checkpoints_results(
