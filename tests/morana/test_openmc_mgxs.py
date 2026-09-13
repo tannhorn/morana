@@ -187,11 +187,15 @@ def test_cross_sections_accepts_signed_higher_scattering_moments(
         values[1] = -0.054
         matrix[...] = values
 
-    cross_sections = CrossSections.from_openmc_mgxs_hdf5(
-        path, "synthetic_moderator", 600.0, diffusion="p1-outscatter"
-    )
+    with pytest.warns(UserWarning) as warnings_record:
+        cross_sections = CrossSections.from_openmc_mgxs_hdf5(
+            path, "synthetic_moderator", 600.0, diffusion="p1-outscatter"
+        )
 
     np.testing.assert_allclose(cross_sections.D[0], 1.0 / (3.0 * (0.41 + 0.032)))
+    messages = {str(warning.message) for warning in warnings_record}
+    assert any("Legendre scattering moments" in message for message in messages)
+    assert any("inverse-velocity data" in message for message in messages)
 
 
 def test_cross_sections_rejects_negative_p0_scattering(tmp_path: Path) -> None:
@@ -282,12 +286,16 @@ def test_cross_sections_warns_for_unrecognized_temperature_data(
             "future-data", data=np.array([1.0])
         )
 
-    with pytest.warns(UserWarning, match="unrecognized.*future-data"):
+    with pytest.warns(UserWarning) as warnings_record:
         cross_sections = CrossSections.from_openmc_mgxs_hdf5(
             path, "synthetic_moderator", 600.0, diffusion="total"
         )
 
     assert cross_sections.fission is None
+    assert any(
+        "unrecognized" in str(warning.message) and "future-data" in str(warning.message)
+        for warning in warnings_record
+    )
 
 
 def test_cross_sections_rejects_nonzero_delayed_data_for_nonfissionable_record(
