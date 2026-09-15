@@ -279,7 +279,7 @@ def launch_outcome(
     timeout_seconds: int | float = DEFAULT_TIMEOUT_SECONDS,
     address_space_limit_bytes: int = DEFAULT_ADDRESS_SPACE_LIMIT_BYTES,
 ) -> dict[str, Any]:
-    """Run one case and convert bounded worker failures into retained data."""
+    """Run one case and convert bounded worker failures into outcome records."""
     started_at = datetime.now(timezone.utc).isoformat()
     try:
         return _launch_worker(

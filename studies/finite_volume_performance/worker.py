@@ -48,7 +48,7 @@ def main() -> None:
     arguments = _arguments()
     _limit_address_space(arguments.address_space_limit_bytes)
     _limit_output_files(arguments.output_file_limit_bytes)
-    if arguments.solver_case == "direct_node_colamd":
+    if arguments.solver_case == "direct":
         # pylint: disable-next=import-outside-toplevel
         from studies.finite_volume_performance.measurement import measure_workload
 
@@ -60,20 +60,21 @@ def main() -> None:
             kind=arguments.kind,
             repetition=arguments.repetition,
         )
-    else:
+    elif arguments.solver_case == "gmres_jacobi":
         # pylint: disable-next=import-outside-toplevel
-        from studies.finite_volume_performance.solver_screen import (
-            measure_solver_case,
+        from studies.finite_volume_performance.gmres import (
+            measure_gmres_jacobi,
         )
 
-        outcome = measure_solver_case(
+        outcome = measure_gmres_jacobi(
             arguments.groups,
             arguments.axial_layers,
-            case_id=arguments.solver_case,
             requested_threads=arguments.requested_threads,
             kind=arguments.kind,
             repetition=arguments.repetition,
         )
+    else:
+        raise ValueError("solver-case must be 'direct' or 'gmres_jacobi'")
     print(json.dumps(outcome, sort_keys=True, allow_nan=False))
 
 

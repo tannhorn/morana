@@ -22,16 +22,13 @@ from studies.finite_volume_performance.results import (
 )
 
 DEFAULT_OUTPUT_DIR = Path("artifacts/studies/finite_volume_performance")
-_THREAD_COUNTS = (1, 2, 4, 6)
-_THREAD_SCREEN_WORKLOAD = (72, 10)
 _BASELINE_ENDPOINT = (72, 20)
 _BASELINE_ENDPOINT_WARMUP = (72, 5)
-_SOLVER_SCREEN_WORKLOADS = ((36, 10, 3), (72, 5, 1))
 
 
 @dataclass(frozen=True)
 class WorkerRequest:
-    """Describe one fresh worker and whether its outcome is retained."""
+    """Describe one fresh worker and whether its outcome is recorded."""
 
     groups: int
     axial_layers: int
@@ -39,7 +36,7 @@ class WorkerRequest:
     requested_threads: int = 1
     kind: str = "measurement"
     repetition: int | None = None
-    retain: bool = True
+    record: bool = True
 
 
 @dataclass(frozen=True)
@@ -52,12 +49,14 @@ class RunPlan:
 
 
 def _resolve_case_id(case_id: str | None) -> str:
-    """Resolve and validate the CLI's silent solver default."""
+    """Resolve and validate the selected baseline case."""
     # pylint: disable-next=import-outside-toplevel
-    from studies.finite_volume_performance.cases import REFERENCE_CASE_ID, solver_case
+    from studies.finite_volume_performance.cases import CASE_IDS, DIRECT_CASE_ID
 
-    resolved = REFERENCE_CASE_ID if case_id is None else case_id
-    return solver_case(resolved).case_id
+    resolved = DIRECT_CASE_ID if case_id is None else case_id
+    if resolved not in CASE_IDS:
+        raise ValueError(f"--solver must be one of {CASE_IDS}")
+    return resolved
 
 
 def _cell_requests(
@@ -79,7 +78,7 @@ def _cell_requests(
                 axial_layers,
                 case_id,
                 requested_threads=requested_threads,
-                retain=False,
+                record=False,
             )
         )
     requests.extend(
@@ -117,7 +116,7 @@ def _baseline_requests(case_id: str) -> tuple[WorkerRequest, ...]:
                 WorkerRequest(
                     *_BASELINE_ENDPOINT_WARMUP,
                     case_id,
-                    retain=False,
+                    record=False,
                 )
             )
         requests.extend(
@@ -132,60 +131,23 @@ def _baseline_requests(case_id: str) -> tuple[WorkerRequest, ...]:
     return tuple(requests)
 
 
-def _thread_requests(case_id: str) -> tuple[WorkerRequest, ...]:
-    """Return the workstation thread-screen protocol for one solver case."""
-    groups, layers = _THREAD_SCREEN_WORKLOAD
-    return tuple(
-        request
-        for threads in _THREAD_COUNTS
-        for request in _cell_requests(
-            groups, layers, case_id, requested_threads=threads
-        )
-    )
-
-
-def _solver_screen_requests() -> tuple[WorkerRequest, ...]:
-    """Return the bounded single-thread solver-and-ordering protocol."""
-    # pylint: disable-next=import-outside-toplevel
-    from studies.finite_volume_performance.cases import case_records
-
-    requests = []
-    for case in case_records():
-        case_id = str(case["case_id"])
-        for groups, layers, repetitions in _SOLVER_SCREEN_WORKLOADS:
-            requests.extend(
-                _cell_requests(
-                    groups,
-                    layers,
-                    case_id,
-                    repetitions=repetitions,
-                )
-            )
-    return tuple(requests)
-
-
 def _plan(mode: str, solver_case: str | None = None) -> RunPlan:
     """Resolve one CLI mode into an explicit immutable execution plan."""
-    if mode == "solver-screen":
-        if solver_case is not None:
-            raise ValueError("--solver does not apply to solver-screen mode")
-        return RunPlan(mode, "solver_screen.json", _solver_screen_requests())
-    case_id = _resolve_case_id(solver_case)
     if mode == "smoke":
         if solver_case is not None:
-            raise ValueError("--solver does not apply to smoke mode")
+            raise ValueError("--solver applies only to baseline mode")
+        # pylint: disable-next=import-outside-toplevel
+        from studies.finite_volume_performance.cases import DIRECT_CASE_ID
+
         return RunPlan(
             mode,
             "smoke.json",
-            _cell_requests(6, 2, case_id, repetitions=1, profile=True),
+            _cell_requests(6, 2, DIRECT_CASE_ID, repetitions=1, profile=True),
         )
     if mode == "baseline":
+        case_id = _resolve_case_id(solver_case)
         return RunPlan(mode, f"baseline_{case_id}.json", _baseline_requests(case_id))
-    if mode == "thread-screen":
-        return RunPlan(mode, f"thread_screen_{case_id}.json", _thread_requests(case_id))
-    raise ValueError(
-        "mode must be 'smoke', 'baseline', 'thread-screen', or 'solver-screen'"
-    )
+    raise ValueError("mode must be 'smoke' or 'baseline'")
 
 
 def _request_id(request: WorkerRequest) -> str:
@@ -229,7 +191,7 @@ def _pending_requests(
     missing = {
         request_id
         for request_id, request in by_id.items()
-        if request.retain
+        if request.record
         and _cell(request) not in failed_cells
         and request_id not in recorded
     }
@@ -237,13 +199,13 @@ def _pending_requests(
     for index, request in enumerate(requests):
         if _cell(request) in failed_cells:
             continue
-        if request.retain:
+        if request.record:
             if _request_id(request) in missing:
                 pending.append(request)
             continue
         following = []
         for candidate in requests[index + 1 :]:
-            if not candidate.retain:
+            if not candidate.record:
                 break
             following.append(candidate)
         if any(
@@ -268,7 +230,7 @@ def _workloads(requests: Iterable[WorkerRequest]) -> list[dict[str, object]]:
 
 
 def _print_outcome(outcome: dict[str, object]) -> None:
-    """Print one concise retained or terminal outcome."""
+    """Print one concise recorded or terminal outcome."""
     if outcome["status"] == "failed":
         print(f"  terminal {outcome['outcome_id']}: {outcome['failure']['kind']}")
         return
@@ -278,7 +240,7 @@ def _print_outcome(outcome: dict[str, object]) -> None:
     if "total_krylov_iterations" in solve:
         detail += f", krylov={solve['total_krylov_iterations']}"
     print(
-        f"  retained {outcome['outcome_id']}: "
+        f"  recorded {outcome['outcome_id']}: "
         f"wall={metrics['wall_time_seconds']:.3f} s, "
         f"peak={metrics['peak_rss_bytes'] / 1024**2:.1f} MiB, {detail}"
     )
@@ -293,24 +255,6 @@ def _print_summaries(plan: RunPlan, outcomes: list[dict[str, object]]) -> None:
             wall = summary["wall_time_seconds"]["median"]
             peak = summary["peak_rss_bytes"]["median"] / 1024**2
             print(f"  {summary['workload_id']}: wall={wall:.3f} s, peak={peak:.1f} MiB")
-    elif plan.mode == "thread-screen" and summaries:
-        reference = next(
-            item["wall_time_seconds"]["median"]
-            for item in summaries
-            if item["requested_threads"] == 1
-        )
-        print("Thread-screen medians:")
-        for summary in summaries:
-            threads = summary["requested_threads"]
-            wall = summary["wall_time_seconds"]["median"]
-            speedup = reference / wall
-            cpu_ratio = summary["cpu_time_to_wall_time_ratio"]["median"]
-            peak = summary["peak_rss_bytes"]["median"] / 1024**2
-            print(
-                f"  threads={threads}: wall={wall:.3f} s, "
-                f"speedup={speedup:.3f}, efficiency={speedup / threads:.3f}, "
-                f"CPU/wall={cpu_ratio:.3f}, peak={peak:.1f} MiB"
-            )
 
 
 def run(
@@ -341,11 +285,11 @@ def run(
     disposition = "Resuming" if resume else "Running"
     print(f"{disposition} many-group performance mode: {plan.mode}")
     for index, request in enumerate(pending, start=1):
-        retention = "retained" if request.retain else "discarded warm-up"
+        disposition = "recorded" if request.record else "warm-up"
         print(
             f"[{index}/{len(pending)}] {request.case_id}, g={request.groups}, "
             f"z={request.axial_layers}, threads={request.requested_threads}, "
-            f"{request.kind}, {retention}"
+            f"{request.kind}, {disposition}"
         )
         outcome = launch_outcome(
             request.groups,
@@ -357,7 +301,7 @@ def run(
             timeout_seconds=timeout_seconds,
             address_space_limit_bytes=address_space_limit_bytes,
         )
-        if request.retain or outcome["status"] == "failed":
+        if request.record or outcome["status"] == "failed":
             outcomes.append(outcome)
             write_document(
                 output_path,
@@ -374,7 +318,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "mode",
-        choices=("smoke", "baseline", "thread-screen", "solver-screen"),
+        choices=("smoke", "baseline"),
         nargs="?",
         default="smoke",
     )
@@ -383,10 +327,7 @@ def parse_args() -> argparse.Namespace:
         "--solver",
         dest="solver_case",
         metavar="CASE_ID",
-        help=(
-            "solver case for baseline or thread-screen mode; omitted uses "
-            "ordinary factorized power iteration"
-        ),
+        help=("baseline case: 'direct' (default) or 'gmres_jacobi'"),
     )
     parser.add_argument(
         "--timeout-seconds",

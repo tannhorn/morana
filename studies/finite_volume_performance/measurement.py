@@ -143,7 +143,7 @@ def _environment_record() -> dict[str, object]:
 
 
 def _sparse_record(matrix: Any) -> dict[str, object]:
-    """Return retained-array statistics for one SciPy sparse matrix."""
+    """Return stored-array statistics for one SciPy sparse matrix."""
     return {
         "shape": list(matrix.shape),
         "stored_nonzeros": int(matrix.nnz),
@@ -154,7 +154,7 @@ def _sparse_record(matrix: Any) -> dict[str, object]:
 
 
 def _factor_record(factorization: Any) -> dict[str, object]:
-    """Return retained sparse statistics for one SuperLU factorization."""
+    """Return sparse statistics for one SuperLU factorization."""
     lower = _sparse_record(factorization.L)
     upper = _sparse_record(factorization.U)
     return {

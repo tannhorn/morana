@@ -135,7 +135,7 @@ _FAILURE_KINDS = {
     "preconditioner_failure",
     "numerical_failure",
 }
-_DIAGNOSTIC_SOLVE_FIELDS = {
+_GMRES_SOLVE_FIELDS = {
     "wall_time_seconds",
     "user_cpu_time_seconds",
     "system_cpu_time_seconds",
@@ -148,18 +148,18 @@ _DIAGNOSTIC_SOLVE_FIELDS = {
     "outer_iterations",
     "numerical_checks",
 }
-_DIAGNOSTIC_KRYLOV_FIELDS = {
+_GMRES_KRYLOV_FIELDS = {
     "krylov_iterations_by_outer",
     "total_krylov_iterations",
     "linear_relative_residuals_by_outer",
 }
-_DIAGNOSTIC_TIMING_FIELDS = {
+_GMRES_TIMING_FIELDS = {
     "loss_assembly",
     "fission_assembly",
     "linear_solve_setup",
     "linear_rhs_solves",
 }
-_DIAGNOSTIC_CPU_FIELDS = {
+_GMRES_CPU_FIELDS = {
     "linear_solve_setup_user",
     "linear_solve_setup_system",
     "linear_rhs_solves_user",
@@ -215,7 +215,7 @@ def _timestamp(value: object, location: str) -> None:
 
 
 def _check_sparse(value: object, location: str, expected_size: int) -> None:
-    """Validate one retained sparse-matrix storage record."""
+    """Validate one sparse-matrix storage record."""
     record = _record(value, _SPARSE_FIELDS, location)
     if record["shape"] != [expected_size, expected_size]:
         raise ValueError(f"{location}.shape does not match workload unknowns")
@@ -333,7 +333,7 @@ def _check_solve(
     configuration: Mapping[str, Any],
     expected_size: int,
 ) -> None:
-    """Validate solve measurements, retained arrays, and numerical checks."""
+    """Validate solve measurements, sparse arrays, and numerical checks."""
     solve = _record(value, _SOLVE_FIELDS, "observation.solve")
     wall_time = _number(
         solve["wall_time_seconds"], "solve.wall_time_seconds", positive=True
@@ -392,60 +392,15 @@ def _check_solve(
         )
 
 
-def _check_diagnostic_factorization(
-    value: object, case: Mapping[str, Any], expected_size: int
-) -> None:
-    """Validate retained complete or incomplete factor details."""
-    if value is None:
-        if case["case_id"] == "gmres_ilu" or case["strategy"] == "direct":
-            raise ValueError("case must retain factorization statistics")
-        return
-    factor = _record(
-        value,
-        {
-            "kind",
-            "lower",
-            "upper",
-            "row_permutation",
-            "column_permutation",
-            "packing_new_to_old",
-        },
-        "solve.factorization",
-    )
-    expected_kind = "complete" if case["strategy"] == "direct" else "incomplete"
-    if factor["kind"] != expected_kind:
-        raise ValueError("factorization kind does not match solver case")
-    for part in ("lower", "upper"):
-        _check_sparse(factor[part], f"solve.factorization.{part}", expected_size)
-    for name in ("row_permutation", "column_permutation"):
-        permutation = factor[name]
-        if not isinstance(permutation, list) or sorted(permutation) != list(
-            range(expected_size)
-        ):
-            raise ValueError(f"solve.factorization.{name} is not a permutation")
-    packing = factor["packing_new_to_old"]
-    if case["packing"] == "group_major_node_fastest":
-        if not isinstance(packing, list) or sorted(packing) != list(
-            range(expected_size)
-        ):
-            raise ValueError("packing_new_to_old is not a permutation")
-    elif packing is not None:
-        raise ValueError("node-major case must not retain a packing permutation")
-
-
 # pylint: disable-next=too-many-branches
-def _check_diagnostic_solve(
+def _check_gmres_solve(
     value: object,
     *,
-    case: Mapping[str, Any],
     configuration: Mapping[str, Any],
     expected_size: int,
 ) -> None:
-    """Validate strategy-comparison solve measurements and diagnostics."""
-    expected_fields = _DIAGNOSTIC_SOLVE_FIELDS | (
-        _DIAGNOSTIC_KRYLOV_FIELDS if case["strategy"] == "gmres" else set()
-    )
-    solve = _record(value, expected_fields, "solve")
+    """Validate GMRES/Jacobi solve measurements and diagnostics."""
+    solve = _record(value, _GMRES_SOLVE_FIELDS | _GMRES_KRYLOV_FIELDS, "solve")
     wall = _number(solve["wall_time_seconds"], "solve.wall_time_seconds", positive=True)
     for field in ("user_cpu_time_seconds", "system_cpu_time_seconds"):
         _number(solve[field], f"solve.{field}")
@@ -469,38 +424,38 @@ def _check_diagnostic_solve(
     ):
         raise ValueError("solve peak RSS is smaller than an RSS observation")
     timings = _record(
-        solve["timings_seconds"], _DIAGNOSTIC_TIMING_FIELDS, "solve.timings_seconds"
+        solve["timings_seconds"], _GMRES_TIMING_FIELDS, "solve.timings_seconds"
     )
     cpu_times = _record(
-        solve["cpu_times_seconds"], _DIAGNOSTIC_CPU_FIELDS, "solve.cpu_times_seconds"
+        solve["cpu_times_seconds"], _GMRES_CPU_FIELDS, "solve.cpu_times_seconds"
     )
     for name, value_ in (*timings.items(), *cpu_times.items()):
         _number(value_, f"solve timing {name}")
     if sum(timings.values()) > wall + 1.0e-9:
-        raise ValueError("diagnostic component timings exceed wall time")
+        raise ValueError("GMRES component timings exceed wall time")
     matrices = _record(solve["matrices"], {"loss", "fission"}, "solve.matrices")
     for name, matrix in matrices.items():
         _check_sparse(matrix, f"solve.matrices.{name}", expected_size)
-    _check_diagnostic_factorization(solve["factorization"], case, expected_size)
+    if solve["factorization"] is not None:
+        raise ValueError("GMRES/Jacobi must not retain factorization statistics")
     iterations = _integer(
         solve["outer_iterations"], "solve.outer_iterations", positive=True
     )
-    if case["strategy"] == "gmres":
-        krylov = solve["krylov_iterations_by_outer"]
-        residuals = solve["linear_relative_residuals_by_outer"]
-        if not isinstance(krylov, list) or len(krylov) != iterations:
-            raise ValueError("per-outer Krylov counts do not match outer iterations")
-        if not isinstance(residuals, list) or len(residuals) != iterations:
-            raise ValueError("per-outer residuals do not match outer iterations")
-        for value_ in krylov:
-            _integer(value_, "Krylov iteration count", positive=True)
-        for value_ in residuals:
-            _number(value_, "linear relative residual")
-        total = _integer(
-            solve["total_krylov_iterations"], "total Krylov iterations", positive=True
-        )
-        if total != sum(krylov):
-            raise ValueError("total Krylov iterations do not match per-outer counts")
+    krylov = solve["krylov_iterations_by_outer"]
+    residuals = solve["linear_relative_residuals_by_outer"]
+    if not isinstance(krylov, list) or len(krylov) != iterations:
+        raise ValueError("per-outer Krylov counts do not match outer iterations")
+    if not isinstance(residuals, list) or len(residuals) != iterations:
+        raise ValueError("per-outer residuals do not match outer iterations")
+    for value_ in krylov:
+        _integer(value_, "Krylov iteration count", positive=True)
+    for value_ in residuals:
+        _number(value_, "linear relative residual")
+    total = _integer(
+        solve["total_krylov_iterations"], "total Krylov iterations", positive=True
+    )
+    if total != sum(krylov):
+        raise ValueError("total Krylov iterations do not match per-outer counts")
     checks = _record(solve["numerical_checks"], _NUMERICAL_FIELDS, "checks")
     for name, value_ in checks.items():
         if name == "scalar_balance_residual":
@@ -591,15 +546,18 @@ def _check_outcome(
     if not isinstance(solve, dict):
         raise ValueError("successful outcome.solve must be a JSON object")
     if "stages_seconds" in solve:
+        if case_id != "direct":
+            raise ValueError("only the direct case may contain direct stage timings")
         _check_solve(
             solve,
             configuration=configuration,
             expected_size=workload["unknowns"],
         )
     else:
-        _check_diagnostic_solve(
+        if case_id != "gmres_jacobi":
+            raise ValueError("only GMRES/Jacobi may contain GMRES timings")
+        _check_gmres_solve(
             solve,
-            case=cases[case_id],
             configuration=configuration,
             expected_size=int(workload["unknowns"]),
         )
@@ -608,7 +566,7 @@ def _check_outcome(
 
 
 def check_document(document: object) -> dict[str, Any]:
-    """Check a current-checkout performance result document."""
+    """Check a performance result document for this study definition."""
     checked = _record(document, _DOCUMENT_FIELDS, "performance result")
     if not isinstance(checked["workloads"], list):
         raise ValueError("performance result workloads must be an array")
@@ -617,9 +575,9 @@ def check_document(document: object) -> dict[str, Any]:
     if not isinstance(checked["outcomes"], list):
         raise ValueError("performance result outcomes must be an array")
     # pylint: disable-next=import-outside-toplevel
-    from studies.finite_volume_performance.cases import case_records
+    from studies.finite_volume_performance.cases import records
 
-    if checked["cases"] != case_records():
+    if checked["cases"] != records():
         raise ValueError("performance result cases differ from frozen definitions")
     workloads: dict[str, dict[str, Any]] = {}
     for candidate in checked["workloads"]:
@@ -637,7 +595,7 @@ def check_document(document: object) -> dict[str, Any]:
 
 
 def read_document(path: str | Path) -> dict[str, Any]:
-    """Read and check one current-checkout performance result JSON file."""
+    """Read and check one performance result JSON file."""
     candidate = Path(path)
     try:
         document = json.loads(candidate.read_text(encoding="utf-8"))
@@ -761,7 +719,7 @@ def build_document(
     workloads: Iterable[Mapping[str, object]],
     outcomes: Iterable[Mapping[str, object]],
 ) -> dict[str, Any]:
-    """Construct and check one current-checkout result document."""
+    """Construct and check one result document."""
     document = {
         "workloads": [dict(record) for record in workloads],
         "cases": _case_records(),
@@ -773,6 +731,6 @@ def build_document(
 def _case_records() -> list[dict[str, object]]:
     """Import and return frozen cases without loading them on the help path."""
     # pylint: disable-next=import-outside-toplevel
-    from studies.finite_volume_performance.cases import case_records
+    from studies.finite_volume_performance.cases import records
 
-    return case_records()
+    return records()

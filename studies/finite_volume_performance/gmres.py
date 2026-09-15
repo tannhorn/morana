@@ -1,0 +1,192 @@
+"""Worker-local GMRES/Jacobi measurements for the baseline workflow."""
+
+# This study observes private finite-volume stages. It remains separate from
+# Morana's public solver API.
+# pylint: disable=duplicate-code,protected-access
+
+from __future__ import annotations
+
+from contextlib import ExitStack
+import cProfile
+import resource
+import time
+from typing import Any
+from unittest.mock import patch
+
+from morana import FissionSourceNormalization
+from morana.solvers import finite_volume
+
+from studies.finite_volume_performance import measurement
+from studies.finite_volume_performance.cases import (
+    GMRES_JACOBI_CASE_ID,
+    settings_for,
+)
+from studies.finite_volume_performance.orchestration import outcome_identifier
+
+_TIMING_FIELDS = (
+    "loss_assembly",
+    "fission_assembly",
+    "linear_solve_setup",
+    "linear_rhs_solves",
+)
+_CPU_FIELDS = tuple(
+    f"{stage}_{kind}"
+    for stage in ("linear_solve_setup", "linear_rhs_solves")
+    for kind in ("user", "system")
+)
+
+
+class _Capture:
+    """Collect GMRES setup and solve timings alongside assembled matrices."""
+
+    def __init__(self) -> None:
+        self.wall_seconds = {name: 0.0 for name in _TIMING_FIELDS}
+        self.cpu_seconds = {name: 0.0 for name in _CPU_FIELDS}
+        self.rss: dict[str, int] = {}
+        self.matrices: dict[str, dict[str, object]] = {}
+        self.rhs_solve_count = 0
+        self.krylov_iterations: list[int] = []
+
+    def timed_assembly(self, name: str, function: Any) -> Any:
+        """Wrap one matrix-assembly stage."""
+
+        def wrapper(*args: object, **kwargs: object) -> Any:
+            start = time.perf_counter_ns()
+            value = function(*args, **kwargs)
+            self.wall_seconds[name] += (time.perf_counter_ns() - start) / 1.0e9
+            matrix_name = "loss" if name == "loss_assembly" else "fission"
+            self.matrices[matrix_name] = measurement._sparse_record(value)
+            checkpoint = name if name == "loss_assembly" else "fission_matrix_assembly"
+            self.rss[checkpoint] = measurement._current_rss_bytes()
+            return value
+
+        return wrapper
+
+    def timed_linear(self, name: str, function: Any, *, repeated: bool) -> Any:
+        """Wrap GMRES setup or repeated RHS work with CPU and wall timing."""
+
+        def wrapper(*args: object, **kwargs: object) -> Any:
+            usage_before = resource.getrusage(resource.RUSAGE_SELF)
+            start = time.perf_counter_ns()
+            value = function(*args, **kwargs)
+            usage_after = resource.getrusage(resource.RUSAGE_SELF)
+            self.wall_seconds[name] += (time.perf_counter_ns() - start) / 1.0e9
+            self.cpu_seconds[f"{name}_user"] += (
+                usage_after.ru_utime - usage_before.ru_utime
+            )
+            self.cpu_seconds[f"{name}_system"] += (
+                usage_after.ru_stime - usage_before.ru_stime
+            )
+            if repeated:
+                self.rhs_solve_count += 1
+                self.krylov_iterations.append(int(value[1]))
+            else:
+                self.rss[name] = measurement._current_rss_bytes()
+            return value
+
+        return wrapper
+
+
+def _instrumented_solve(configuration: Any, capture: _Capture) -> Any:
+    """Run the GMRES/Jacobi solve with measurement wrappers."""
+    wrappers = {
+        "_assemble_loss_matrix": capture.timed_assembly(
+            "loss_assembly", finite_volume._assemble_loss_matrix
+        ),
+        "_assemble_fission_matrix": capture.timed_assembly(
+            "fission_assembly", finite_volume._assemble_fission_matrix
+        ),
+        "_build_gmres_preconditioner": capture.timed_linear(
+            "linear_solve_setup",
+            finite_volume._build_gmres_preconditioner,
+            repeated=False,
+        ),
+        "_solve_gmres_system": capture.timed_linear(
+            "linear_rhs_solves", finite_volume._solve_gmres_system, repeated=True
+        ),
+    }
+    with ExitStack() as stack:
+        for name, wrapper in wrappers.items():
+            stack.enter_context(patch.object(finite_volume, name, wrapper))
+        return finite_volume.solve_keff(
+            configuration,
+            FissionSourceNormalization(rate=1.0),
+            settings_for(GMRES_JACOBI_CASE_ID),
+        )
+
+
+def measure_gmres_jacobi(
+    groups: int,
+    axial_layers: int,
+    *,
+    requested_threads: int,
+    kind: str,
+    repetition: int | None,
+) -> dict[str, object]:
+    """Measure one GMRES/Jacobi workload in the current fresh worker."""
+    if kind not in {"measurement", "profile"}:
+        raise ValueError("kind must be 'measurement' or 'profile'")
+    capture = _Capture()
+    profile = cProfile.Profile() if kind == "profile" else None
+
+    def solve(configuration: Any) -> tuple[Any, dict[str, int]]:
+        try:
+            if profile is not None:
+                profile.enable()
+            result = _instrumented_solve(configuration, capture)
+        finally:
+            if profile is not None:
+                profile.disable()
+        capture.rss["completed_result"] = measurement._current_rss_bytes()
+        return result, capture.rss
+
+    result, common = measurement._measure_worker_call(groups, axial_layers, solve)
+    report = result.execution_report
+    if capture.rhs_solve_count != report.iterations:
+        raise RuntimeError("GMRES RHS-solve count does not match outer iterations")
+    reported_krylov = [item.linear_solve.iterations for item in report.outer_iterations]
+    if capture.krylov_iterations != reported_krylov:
+        raise RuntimeError("captured Krylov counts do not match execution report")
+    return {
+        "outcome_id": outcome_identifier(
+            groups,
+            axial_layers,
+            GMRES_JACOBI_CASE_ID,
+            requested_threads=requested_threads,
+            kind=kind,
+            repetition=repetition,
+        ),
+        "case_id": GMRES_JACOBI_CASE_ID,
+        "workload_id": f"g{groups}-z{axial_layers}",
+        "kind": kind,
+        "repetition": repetition,
+        "requested_threads": requested_threads,
+        "status": "success",
+        **measurement._worker_fields(
+            common,
+            {
+                "rss_checkpoints_bytes": capture.rss,
+                "timings_seconds": capture.wall_seconds,
+                "cpu_times_seconds": capture.cpu_seconds,
+                "matrices": capture.matrices,
+                "factorization": None,
+                "outer_iterations": report.iterations,
+                "krylov_iterations_by_outer": capture.krylov_iterations,
+                "total_krylov_iterations": sum(capture.krylov_iterations),
+                "linear_relative_residuals_by_outer": [
+                    item.linear_solve.true_relative_residual
+                    for item in report.outer_iterations
+                ],
+                "numerical_checks": measurement._numerical_record(result),
+            },
+        ),
+        "profile": (
+            None
+            if profile is None
+            else {
+                "profiler": "cProfile",
+                "entries": measurement._profile_entries(profile),
+            }
+        ),
+        "failure": None,
+    }
