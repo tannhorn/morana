@@ -18,8 +18,8 @@ the MathJax Consortium under Apache-2.0. Their complete license is included as
 ## Morana logo
 
 [`morana.png`](assets/morana.png) was generated with ChatGPT and is dedicated
-to [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) by Lubomir
-Bures. To the extent that Lubomir Bures holds copyright or related rights in
+to [CC0-1.0](https://creativecommons.org/publicdomain/zero/1.0/) by Lubomír
+Bureš. To the extent that Lubomír Bureš holds copyright or related rights in
 the image, it may be reused without conditions.
 
 ## MkDocs-generated frontend

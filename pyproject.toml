@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "morana"
 version = "0.1.0"
 description = "Morana: modern reactor analysis for hexagonal lattices."
-authors = [{name = "Lubomir Bures"}]
+authors = [{name = "Lubomír Bureš"}]
 keywords = [
   "neutronics",
   "reactor-physics",
