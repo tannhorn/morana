@@ -5,10 +5,18 @@ import re
 
 from scripts.check_spelling_and_terms import (
     TerminologyRule,
+    authored_files,
     check_terminology,
     load_rules,
     run_codespell,
 )
+
+
+def test_authored_files_include_study_sources() -> None:
+    """The quality gate must cover maintained studies as authored source."""
+    relative_paths = {path.relative_to(Path.cwd()) for path in authored_files()}
+
+    assert Path("studies/finite_volume_performance/workload.py") in relative_paths
 
 
 def test_check_terminology_reports_preferred_terms(tmp_path: Path) -> None:

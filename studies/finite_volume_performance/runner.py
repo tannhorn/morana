@@ -7,13 +7,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from examples.many_group_performance.orchestration import (
+from studies.finite_volume_performance.orchestration import (
     DEFAULT_ADDRESS_SPACE_LIMIT_BYTES,
     DEFAULT_TIMEOUT_SECONDS,
     launch_outcome,
     outcome_identifier,
 )
-from examples.many_group_performance.results import (
+from studies.finite_volume_performance.results import (
     build_document,
     outcome_metrics,
     read_document,
@@ -21,7 +21,7 @@ from examples.many_group_performance.results import (
     write_document,
 )
 
-DEFAULT_OUTPUT_DIR = Path("artifacts/examples/many_group_performance")
+DEFAULT_OUTPUT_DIR = Path("artifacts/studies/finite_volume_performance")
 _THREAD_COUNTS = (1, 2, 4, 6)
 _THREAD_SCREEN_WORKLOAD = (72, 10)
 _BASELINE_ENDPOINT = (72, 20)
@@ -54,7 +54,7 @@ class RunPlan:
 def _resolve_case_id(case_id: str | None) -> str:
     """Resolve and validate the CLI's silent solver default."""
     # pylint: disable-next=import-outside-toplevel
-    from examples.many_group_performance.cases import REFERENCE_CASE_ID, solver_case
+    from studies.finite_volume_performance.cases import REFERENCE_CASE_ID, solver_case
 
     resolved = REFERENCE_CASE_ID if case_id is None else case_id
     return solver_case(resolved).case_id
@@ -108,7 +108,7 @@ def _cell_requests(
 def _baseline_requests(case_id: str) -> tuple[WorkerRequest, ...]:
     """Return the complete Cartesian baseline protocol for one solver case."""
     # pylint: disable-next=import-outside-toplevel
-    from examples.many_group_performance.workload import baseline_workloads
+    from studies.finite_volume_performance.workload import baseline_workloads
 
     requests = []
     for groups, layers in baseline_workloads():
@@ -148,7 +148,7 @@ def _thread_requests(case_id: str) -> tuple[WorkerRequest, ...]:
 def _solver_screen_requests() -> tuple[WorkerRequest, ...]:
     """Return the bounded single-thread solver-and-ordering protocol."""
     # pylint: disable-next=import-outside-toplevel
-    from examples.many_group_performance.cases import case_records
+    from studies.finite_volume_performance.cases import case_records
 
     requests = []
     for case in case_records():
@@ -258,7 +258,7 @@ def _pending_requests(
 def _workloads(requests: Iterable[WorkerRequest]) -> list[dict[str, object]]:
     """Return each workload definition once in first-use order."""
     # pylint: disable-next=import-outside-toplevel
-    from examples.many_group_performance.measurement import workload_record
+    from studies.finite_volume_performance.measurement import workload_record
 
     dimensions = []
     for request in requests:
@@ -371,7 +371,7 @@ def run(
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse the maintained performance-example interface."""
+    """Parse the maintained performance-study interface."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "mode",

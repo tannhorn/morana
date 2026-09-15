@@ -39,7 +39,7 @@ After changing Python source, run:
 ```bash
 pytest
 pylint src/morana
-python -m compileall src examples tests
+python -m compileall src examples studies tests
 ```
 
 Run `reuse lint` after adding, moving, or renaming repository files and before
@@ -87,17 +87,43 @@ The reference-export check compares the runtime `__all__` declarations of
 mkdocstrings IDs in their generated reference pages, rejecting missing runtime
 attributes, missing anchors, and duplicate anchors.
 The spelling and terminology check scans authored documentation, public source
-and docstrings, maintained examples, release-note fragments, and maintenance
-scripts. Add legitimate technical words to `scripts/spelling_vocabulary.txt`;
-keep discouraged forms and their canonical replacements in
+and docstrings, maintained examples and studies, release-note fragments, and
+maintenance scripts. Add legitimate technical words to
+`scripts/spelling_vocabulary.txt`; keep discouraged forms and their canonical
+replacements in
 `scripts/terminology_rules.toml`.
 
-After a substantial change, also run every maintained example in scope.
-The routine suite is:
+After a substantial change, also run every maintained artifact in scope. The
+routine example suite is:
 
 ```bash
 examples/run_all.sh
 ```
+
+## Maintained development studies
+
+The `studies/` tree contains maintained computational investigations used to
+inform Morana development. These workflows answer bounded design or
+implementation questions; they are not user examples, routine tests,
+numerical-verification claims, recognized reference problems, or portable
+performance guarantees. Run a study explicitly when it is in scope; the
+finite-volume many-group smoke workflow is:
+
+```bash
+python -m studies.finite_volume_performance
+```
+
+Its long-running direct-reference and GMRES/Jacobi performance studies are
+explicit:
+
+```bash
+python -m studies.finite_volume_performance baseline
+python -m studies.finite_volume_performance baseline --solver gmres_jacobi
+```
+
+The workflow writes checked, machine-specific results below
+`artifacts/studies/finite_volume_performance/`. These ignored records are local
+development evidence rather than package data.
 
 Computationally expensive staged workflows, such as the OpenMC comparison,
 document their own reproduction commands and are run separately when in scope.
@@ -510,8 +536,12 @@ does not make another documentation page evidence for an implementation claim.
 
 - The modeling and solver workflow owns the implemented capability inventory,
   cross-object behavior, result conventions, and capability boundaries.
-- The geometry, theory, and output pages own their named conventions; the
-  examples page alone catalogs maintained runnable workflows.
+- The geometry, theory, and output pages own their named conventions. The
+  examples page catalogs maintained user-facing runnable workflows. The
+  contributor workflow owns current instructions for maintained development
+  studies, while dated developer notes retain only conclusions that materially
+  guide later work. Developer notes are not progress logs, proposed designs,
+  API documentation, or general contributor guidance.
 - The OpenMC MGXS import guide owns its accepted external artifact, selection,
   conversion, warnings, units, and interoperability limits.
 - The OpenMC–Morana comparison page owns its physical model, published

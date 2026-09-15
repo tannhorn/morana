@@ -15,7 +15,7 @@ import re
 from statistics import median
 from typing import Any
 
-from examples.many_group_performance.orchestration import (
+from studies.finite_volume_performance.orchestration import (
     THREAD_ENVIRONMENT_VARIABLES,
     outcome_identifier,
 )
@@ -617,7 +617,7 @@ def check_document(document: object) -> dict[str, Any]:
     if not isinstance(checked["outcomes"], list):
         raise ValueError("performance result outcomes must be an array")
     # pylint: disable-next=import-outside-toplevel
-    from examples.many_group_performance.cases import case_records
+    from studies.finite_volume_performance.cases import case_records
 
     if checked["cases"] != case_records():
         raise ValueError("performance result cases differ from frozen definitions")
@@ -773,6 +773,6 @@ def build_document(
 def _case_records() -> list[dict[str, object]]:
     """Import and return frozen cases without loading them on the help path."""
     # pylint: disable-next=import-outside-toplevel
-    from examples.many_group_performance.cases import case_records
+    from studies.finite_volume_performance.cases import case_records
 
     return case_records()

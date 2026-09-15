@@ -20,12 +20,12 @@ import numpy as np
 from morana import FissionSourceNormalization
 from morana.solvers import finite_volume
 
-from examples.many_group_performance.cases import (
+from studies.finite_volume_performance.cases import (
     SolverCase,
     solver_case,
 )
-from examples.many_group_performance import measurement
-from examples.many_group_performance.orchestration import outcome_identifier
+from studies.finite_volume_performance import measurement
+from studies.finite_volume_performance.orchestration import outcome_identifier
 
 _TIMING_FIELDS = {
     "loss_assembly",

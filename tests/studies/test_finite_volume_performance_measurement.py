@@ -11,9 +11,14 @@ import tempfile
 
 import pytest
 
-from examples.many_group_performance import measurement, orchestration, results, runner
-from examples.many_group_performance import solver_screen
-from examples.many_group_performance.cases import REFERENCE_CASE_ID, case_records
+from studies.finite_volume_performance import (
+    measurement,
+    orchestration,
+    results,
+    runner,
+    solver_screen,
+)
+from studies.finite_volume_performance.cases import REFERENCE_CASE_ID, case_records
 
 
 @pytest.fixture(scope="module")

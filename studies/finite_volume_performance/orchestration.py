@@ -22,7 +22,7 @@ THREAD_ENVIRONMENT_VARIABLES = (
     "NUMEXPR_NUM_THREADS",
 )
 _REPOSITORY_ROOT = Path(__file__).parents[2]
-_WORKER_MODULE = "examples.many_group_performance.worker"
+_WORKER_MODULE = "studies.finite_volume_performance.worker"
 DEFAULT_TIMEOUT_SECONDS = 2 * 60 * 60
 DEFAULT_ADDRESS_SPACE_LIMIT_BYTES = 22 * 1024**3
 MAX_CAPTURED_OUTPUT_BYTES = 64 * 1024**2

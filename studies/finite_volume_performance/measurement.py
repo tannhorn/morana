@@ -1,6 +1,6 @@
 """Worker-local measurement of the finite-volume criticality solve."""
 
-# This maintained benchmark deliberately observes private finite-volume stages.
+# This maintained study deliberately observes private finite-volume stages.
 # It fails on call-graph drift instead of exposing instrumentation in Morana.
 # pylint: disable=protected-access,too-many-lines
 
@@ -27,12 +27,12 @@ from morana import FissionSourceNormalization
 from morana.results import KeffBalance, Result
 from morana.solvers import finite_volume
 
-from examples.many_group_performance.orchestration import (
+from studies.finite_volume_performance.orchestration import (
     THREAD_ENVIRONMENT_VARIABLES,
     outcome_identifier,
 )
-from examples.many_group_performance.results import STAGE_NAMES
-from examples.many_group_performance.workload import (
+from studies.finite_volume_performance.results import STAGE_NAMES
+from studies.finite_volume_performance.workload import (
     FROZEN_ARRAY_DIGESTS,
     build_configuration,
     solve_settings,
@@ -216,7 +216,7 @@ class _Recorder:
         }
         if mismatches:
             raise RuntimeError(
-                f"benchmark instrumentation call graph changed: {mismatches}"
+                f"study instrumentation call graph changed: {mismatches}"
             )
 
 
@@ -491,7 +491,7 @@ def measure_workload(
     result, common = _measure_worker_call(groups, axial_layers, solve)
     recorder.require_expected_calls()
     if recorder.factorization_handle is None:
-        raise RuntimeError("benchmark did not retain the direct factorization")
+        raise RuntimeError("study did not retain the direct factorization")
     # Freeze peak RSS above, then inspect L and U: SciPy may materialize sparse
     # views while exposing these statistics, which is observer overhead rather
     # than solver memory.

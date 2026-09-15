@@ -61,6 +61,8 @@ nav:
           - k-effective manufactured-solution case: keff_mms.md
           - OpenMC–Morana SRE-derived comparison: openmc_comparison.md
           - OpenMC comparison workflow: openmc_comparison_workflow.md
+      - Development notes:
+          - 2026-09-15 finite-volume performance baseline: development_notes/2026-09-15_finite_volume_performance_baseline.md
       - Changelog: changelog.md
       - Citing Morana: citation.md
       - Contributor workflow: contributor_workflow.md

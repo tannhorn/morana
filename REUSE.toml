@@ -12,6 +12,7 @@ path = [
     "src/**",
     "tests/**",
     "examples/**",
+    "studies/**",
     "scripts/**",
     "changes/**",
     "docs/**",

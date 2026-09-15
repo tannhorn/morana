@@ -50,7 +50,7 @@ def main() -> None:
     _limit_output_files(arguments.output_file_limit_bytes)
     if arguments.solver_case == "direct_node_colamd":
         # pylint: disable-next=import-outside-toplevel
-        from examples.many_group_performance.measurement import measure_workload
+        from studies.finite_volume_performance.measurement import measure_workload
 
         outcome = measure_workload(
             arguments.groups,
@@ -62,7 +62,9 @@ def main() -> None:
         )
     else:
         # pylint: disable-next=import-outside-toplevel
-        from examples.many_group_performance.solver_screen import measure_solver_case
+        from studies.finite_volume_performance.solver_screen import (
+            measure_solver_case,
+        )
 
         outcome = measure_solver_case(
             arguments.groups,

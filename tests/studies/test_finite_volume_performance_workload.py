@@ -7,7 +7,7 @@ from math import ceil, exp
 import numpy as np
 import pytest
 
-from examples.many_group_performance import workload
+from studies.finite_volume_performance import workload
 from morana import (
     DirectLinearSolveSettings,
     FissionSourceNormalization,

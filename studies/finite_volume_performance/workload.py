@@ -112,7 +112,7 @@ FROZEN_ARRAY_DIGESTS = MappingProxyType(
 
 
 def _require_group_count(groups: int) -> int:
-    """Require one group count in the frozen benchmark matrix."""
+    """Require one group count in the frozen study matrix."""
     if isinstance(groups, bool) or not isinstance(groups, int):
         raise TypeError("groups must be an integer")
     if groups not in GROUP_COUNTS:

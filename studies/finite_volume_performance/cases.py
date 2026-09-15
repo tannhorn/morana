@@ -12,7 +12,7 @@ from morana import (
     NoPreconditioner,
 )
 
-from examples.many_group_performance.workload import solve_settings
+from studies.finite_volume_performance.workload import solve_settings
 
 REFERENCE_CASE_ID = "direct_node_colamd"
 
