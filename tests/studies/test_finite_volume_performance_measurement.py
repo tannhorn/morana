@@ -352,8 +352,8 @@ def test_maintained_mode_worker_sequences_are_exact() -> None:
     ]
 
     baseline = runner._plan("baseline").requests
-    assert len(baseline) == 58
-    assert sum(request.retain for request in baseline) == 46
+    assert len(baseline) == 60
+    assert sum(request.retain for request in baseline) == 48
     assert sum(request.kind == "profile" for request in baseline) == 12
     endpoint = [
         request
@@ -362,8 +362,11 @@ def test_maintained_mode_worker_sequences_are_exact() -> None:
     ]
     assert [(request.kind, request.retain) for request in endpoint] == [
         ("measurement", True),
+        ("measurement", True),
+        ("measurement", True),
         ("profile", True),
     ]
+    assert [request.repetition for request in endpoint] == [0, 1, 2, None]
     endpoint_index = baseline.index(endpoint[0])
     assert baseline[endpoint_index - 1] == runner.WorkerRequest(
         72, 5, REFERENCE_CASE_ID, retain=False
@@ -422,8 +425,8 @@ def test_solver_case_definitions_and_explicit_thread_requests_are_exact() -> Non
         "baseline_gmres_ilu.json"
     )
     alternate_baseline = runner._plan("baseline", "gmres_ilu").requests
-    assert len(alternate_baseline) == 58
-    assert sum(request.retain for request in alternate_baseline) == 46
+    assert len(alternate_baseline) == 60
+    assert sum(request.retain for request in alternate_baseline) == 48
     assert {request.kind for request in alternate_baseline} == {
         "measurement",
         "profile",
@@ -556,11 +559,14 @@ def test_baseline_resume_runs_only_missing_endpoint_after_smaller_warmup() -> No
 
     assert resumed[0] == runner.WorkerRequest(72, 5, REFERENCE_CASE_ID, retain=False)
     endpoint_requests = [
-        (request.groups, request.axial_layers, request.kind) for request in resumed[1:]
+        (request.groups, request.axial_layers, request.kind, request.repetition)
+        for request in resumed[1:]
     ]
     assert endpoint_requests == [
-        (72, 20, "measurement"),
-        (72, 20, "profile"),
+        (72, 20, "measurement", 0),
+        (72, 20, "measurement", 1),
+        (72, 20, "measurement", 2),
+        (72, 20, "profile", None),
     ]
 
 

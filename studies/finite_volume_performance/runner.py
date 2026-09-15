@@ -125,7 +125,6 @@ def _baseline_requests(case_id: str) -> tuple[WorkerRequest, ...]:
                 groups,
                 layers,
                 case_id,
-                repetitions=1 if (groups, layers) == _BASELINE_ENDPOINT else 3,
                 warmup=(groups, layers) != _BASELINE_ENDPOINT,
                 profile=True,
             )
