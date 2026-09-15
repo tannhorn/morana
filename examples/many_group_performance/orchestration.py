@@ -1,7 +1,8 @@
-"""Fresh-process orchestration for many-group performance observations."""
+"""Fresh-process orchestration for many-group performance outcomes."""
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import math
 import os
@@ -26,6 +27,14 @@ DEFAULT_TIMEOUT_SECONDS = 2 * 60 * 60
 DEFAULT_ADDRESS_SPACE_LIMIT_BYTES = 22 * 1024**3
 MAX_CAPTURED_OUTPUT_BYTES = 64 * 1024**2
 _TERMINATION_GRACE_SECONDS = 5.0
+
+
+class PerformanceWorkerError(RuntimeError):
+    """Report a classified fresh-worker failure."""
+
+    def __init__(self, kind: str, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
 
 
 def worker_environment(requested_threads: int) -> dict[str, str]:
@@ -85,17 +94,43 @@ def _captured_text(stream: Any, name: str) -> str:
     stream.seek(0)
     content = stream.read(MAX_CAPTURED_OUTPUT_BYTES + 1)
     if len(content) > MAX_CAPTURED_OUTPUT_BYTES:
-        raise RuntimeError(
+        raise PerformanceWorkerError(
+            "output_limit",
             f"performance worker {name} exceeded "
-            f"{MAX_CAPTURED_OUTPUT_BYTES} captured bytes"
+            f"{MAX_CAPTURED_OUTPUT_BYTES} captured bytes",
         )
     try:
         return content.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise RuntimeError(f"performance worker {name} was not UTF-8") from exc
+        raise PerformanceWorkerError(
+            "invalid_output", f"performance worker {name} was not UTF-8"
+        ) from exc
 
 
-def launch_observation(
+def _worker_failure_kind(detail: str, returncode: int) -> str:
+    """Classify one worker failure without depending on exception types."""
+    lowered = detail.lower()
+    if "gmres did not converge" in lowered or "max_krylov_iterations" in lowered:
+        return "krylov_failure"
+    if "preconditioner" in lowered:
+        return "preconditioner_failure"
+    if any(
+        phrase in lowered
+        for phrase in (
+            "relative residual",
+            "negative flux",
+            "outer iterations",
+            "scalar balance",
+            "non-finite",
+        )
+    ):
+        return "numerical_failure"
+    if returncode < 0 or "memoryerror" in lowered or "cannot allocate" in lowered:
+        return "resource_limit"
+    return "worker_error"
+
+
+def _launch_worker(
     groups: int,
     axial_layers: int,
     *,
@@ -104,8 +139,9 @@ def launch_observation(
     repetition: int | None = None,
     timeout_seconds: int | float = DEFAULT_TIMEOUT_SECONDS,
     address_space_limit_bytes: int = DEFAULT_ADDRESS_SPACE_LIMIT_BYTES,
+    solver_case: str,
 ) -> dict[str, Any]:
-    """Run one resource-bounded observation in a new Python interpreter."""
+    """Run one resource-bounded outcome in a new Python interpreter."""
     if kind not in {"measurement", "profile"}:
         raise ValueError("kind must be 'measurement' or 'profile'")
     checked_timeout = _positive_number(timeout_seconds, "timeout_seconds")
@@ -131,6 +167,7 @@ def launch_observation(
     ]
     if repetition is not None:
         command.extend(("--repetition", str(repetition)))
+    command.extend(("--solver-case", solver_case))
     with (
         tempfile.TemporaryFile(mode="w+b") as stdout_file,
         tempfile.TemporaryFile(mode="w+b") as stderr_file,
@@ -147,8 +184,8 @@ def launch_observation(
             returncode = process.wait(timeout=checked_timeout)
         except subprocess.TimeoutExpired as exc:
             _terminate_process_group(process)
-            raise RuntimeError(
-                f"performance worker exceeded {checked_timeout:g} seconds"
+            raise PerformanceWorkerError(
+                "timeout", f"performance worker exceeded {checked_timeout:g} seconds"
             ) from exc
         except BaseException:
             _terminate_process_group(process)
@@ -157,16 +194,121 @@ def launch_observation(
         stderr = _captured_text(stderr_file, "stderr")
     if returncode != 0:
         detail = stderr.strip() or stdout.strip()
-        raise RuntimeError(f"performance worker failed: {detail}")
+        raise PerformanceWorkerError(
+            _worker_failure_kind(detail, returncode),
+            f"performance worker failed with status {returncode}: {detail}",
+        )
     try:
-        observation = json.loads(stdout)
+        outcome = json.loads(stdout)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("performance worker returned invalid JSON") from exc
-    if not isinstance(observation, dict):
-        raise RuntimeError("performance worker did not return a JSON object")
-    observation["resource_limits"] = {
+        raise PerformanceWorkerError(
+            "invalid_output", "performance worker returned invalid JSON"
+        ) from exc
+    if not isinstance(outcome, dict):
+        raise PerformanceWorkerError(
+            "invalid_output", "performance worker did not return a JSON object"
+        )
+    outcome["resource_limits"] = {
         "timeout_seconds": checked_timeout,
         "address_space_bytes": checked_memory,
         "captured_output_bytes_per_stream": MAX_CAPTURED_OUTPUT_BYTES,
     }
-    return observation
+    return outcome
+
+
+def outcome_identifier(
+    groups: int,
+    axial_layers: int,
+    case_id: str,
+    *,
+    requested_threads: int,
+    kind: str,
+    repetition: int | None,
+) -> str:
+    """Return one deterministic performance-outcome identifier."""
+    suffix = "none" if repetition is None else str(repetition)
+    return f"g{groups}-z{axial_layers}-{case_id}-t{requested_threads}-{kind}-r{suffix}"
+
+
+def failed_outcome(
+    groups: int,
+    axial_layers: int,
+    case_id: str,
+    *,
+    requested_threads: int,
+    measurement_kind: str,
+    repetition: int | None,
+    failure_kind: str,
+    message: str,
+) -> dict[str, object]:
+    """Return one structured terminal solver-worker failure."""
+    return {
+        "outcome_id": outcome_identifier(
+            groups,
+            axial_layers,
+            case_id,
+            requested_threads=requested_threads,
+            kind=measurement_kind,
+            repetition=repetition,
+        ),
+        "case_id": case_id,
+        "workload_id": f"g{groups}-z{axial_layers}",
+        "kind": measurement_kind,
+        "repetition": repetition,
+        "requested_threads": requested_threads,
+        "started_at_utc": datetime.now(timezone.utc).isoformat(),
+        "status": "failed",
+        "repository": None,
+        "environment": None,
+        "resource_limits": None,
+        "configuration": None,
+        "solve": None,
+        "profile": None,
+        "failure": {"kind": failure_kind, "message": message[-4096:]},
+    }
+
+
+def launch_outcome(
+    groups: int,
+    axial_layers: int,
+    *,
+    case_id: str,
+    requested_threads: int,
+    kind: str,
+    repetition: int | None,
+    timeout_seconds: int | float = DEFAULT_TIMEOUT_SECONDS,
+    address_space_limit_bytes: int = DEFAULT_ADDRESS_SPACE_LIMIT_BYTES,
+) -> dict[str, Any]:
+    """Run one case and convert bounded worker failures into retained data."""
+    started_at = datetime.now(timezone.utc).isoformat()
+    try:
+        return _launch_worker(
+            groups,
+            axial_layers,
+            requested_threads=requested_threads,
+            kind=kind,
+            repetition=repetition,
+            timeout_seconds=timeout_seconds,
+            address_space_limit_bytes=address_space_limit_bytes,
+            solver_case=case_id,
+        )
+    except PerformanceWorkerError as exc:
+        outcome = failed_outcome(
+            groups,
+            axial_layers,
+            case_id,
+            requested_threads=requested_threads,
+            measurement_kind=kind,
+            repetition=repetition,
+            failure_kind=exc.kind,
+            message=str(exc),
+        )
+        outcome["started_at_utc"] = started_at
+        outcome["resource_limits"] = {
+            "timeout_seconds": _positive_number(timeout_seconds, "timeout_seconds"),
+            "address_space_bytes": _positive_integer(
+                address_space_limit_bytes, "address_space_limit_bytes"
+            ),
+            "captured_output_bytes_per_stream": MAX_CAPTURED_OUTPUT_BYTES,
+        }
+        return outcome

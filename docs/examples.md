@@ -199,23 +199,51 @@ evidence. It is included in `examples/run_all.sh`.
 python -m examples.many_group_performance
 ```
 
-The complete Cartesian baseline and workstation thread screen are deliberately
-opt-in because they are long-running:
+The complete Cartesian baseline, workstation thread screen, and bounded
+solver-and-ordering screen are deliberately opt-in because they are
+long-running:
 
 ```bash
-python -m examples.many_group_performance full
+python -m examples.many_group_performance baseline
 python -m examples.many_group_performance thread-screen
+python -m examples.many_group_performance solver-screen
 ```
+
+The solver screen only records the single-threaded comparison; review those
+outcomes before deciding whether another baseline or a thread screen is useful.
+The baseline and thread-screen modes use ordinary factorized power iteration
+when `--solver` is omitted, or accept one explicit case from the solver-screen
+output, for example:
+
+```bash
+python -m examples.many_group_performance thread-screen --solver gmres_ilu
+python -m examples.many_group_performance baseline --solver gmres_ilu
+```
+
+Every baseline retains a separate function-profile outcome for each workload.
+Non-reference solvers also retain checked strategy-specific factorization or
+Krylov diagnostics.
+
+Baseline and thread-screen filenames always identify the configuration:
+`thread_screen_direct_node_colamd.json` for the implicit default and, for the
+examples above, `thread_screen_gmres_ilu.json` and `baseline_gmres_ilu.json`.
+This prevents runs with different solver configurations from replacing one
+another. The default baseline writes `baseline_direct_node_colamd.json`.
 
 If any performance mode stops after writing a partial JSON record, resume only
-its missing observations (rather than replacing the completed ones) with:
+its missing outcomes (rather than replacing the completed ones) with, for
+example:
 
 ```bash
-python -m examples.many_group_performance full --resume
+python -m examples.many_group_performance baseline --resume
+python -m examples.many_group_performance solver-screen --resume
+python -m examples.many_group_performance thread-screen --solver gmres_ilu --resume
 ```
 
-All modes write checked raw observations below
-`artifacts/examples/many_group_performance/` by default.
+All modes write checked raw outcomes below
+`artifacts/examples/many_group_performance/` by default. Each document uses the
+same `workloads`, `cases`, and `outcomes` envelope: workloads describe only the
+frozen physical problem, while cases contain the complete solver settings.
 
 ## Import and compare external material data
 

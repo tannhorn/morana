@@ -12,29 +12,67 @@ import tempfile
 import pytest
 
 from examples.many_group_performance import measurement, orchestration, results, runner
+from examples.many_group_performance import solver_screen
+from examples.many_group_performance.cases import REFERENCE_CASE_ID, case_records
 
 
 @pytest.fixture(scope="module")
 def measured_observation() -> dict[str, object]:
     """Return one real headline observation from an isolated interpreter."""
-    return orchestration.launch_observation(
-        6, 2, requested_threads=1, kind="measurement", repetition=0
+    return orchestration.launch_outcome(
+        6,
+        2,
+        case_id=REFERENCE_CASE_ID,
+        requested_threads=1,
+        kind="measurement",
+        repetition=0,
     )
 
 
 @pytest.fixture(scope="module")
 def profile_observation() -> dict[str, object]:
     """Return one separately profiled observation from an isolated interpreter."""
-    return orchestration.launch_observation(
-        6, 2, requested_threads=1, kind="profile", repetition=None
+    return orchestration.launch_outcome(
+        6,
+        2,
+        case_id=REFERENCE_CASE_ID,
+        requested_threads=1,
+        kind="profile",
+        repetition=None,
     )
 
 
-def _document(observations: list[dict[str, object]]) -> dict[str, object]:
+@pytest.fixture(scope="module")
+def direct_ordering_outcome() -> dict[str, object]:
+    """Return one real group-major direct-screen outcome."""
+    return orchestration.launch_outcome(
+        6,
+        2,
+        case_id="direct_group_colamd",
+        requested_threads=1,
+        kind="measurement",
+        repetition=0,
+    )
+
+
+@pytest.fixture(scope="module")
+def gmres_ilu_outcome() -> dict[str, object]:
+    """Return one real incomplete-LU GMRES screen outcome."""
+    return orchestration.launch_outcome(
+        6,
+        2,
+        case_id="gmres_ilu",
+        requested_threads=1,
+        kind="measurement",
+        repetition=0,
+    )
+
+
+def _document(outcomes: list[dict[str, object]]) -> dict[str, object]:
     """Build a checked smoke-size document for tests."""
     return results.build_document(
         workloads=[measurement.workload_record(6, 2)],
-        observations=observations,
+        outcomes=outcomes,
     )
 
 
@@ -65,17 +103,30 @@ def test_launcher_rejects_invalid_resource_limits(
     """Invalid resource guards fail before a worker is launched."""
     arguments = {field: value}
     with pytest.raises(error):
-        orchestration.launch_observation(
-            6, 2, requested_threads=1, repetition=0, **arguments
+        orchestration.launch_outcome(
+            6,
+            2,
+            case_id=REFERENCE_CASE_ID,
+            requested_threads=1,
+            kind="measurement",
+            repetition=0,
+            **arguments,
         )
 
 
 def test_launcher_terminates_and_reaps_timed_out_worker() -> None:
     """A deadline kills the isolated worker rather than leaving it running."""
-    with pytest.raises(RuntimeError, match="exceeded"):
-        orchestration.launch_observation(
-            6, 2, requested_threads=1, repetition=0, timeout_seconds=1.0e-6
-        )
+    outcome = orchestration.launch_outcome(
+        6,
+        2,
+        case_id=REFERENCE_CASE_ID,
+        requested_threads=1,
+        kind="measurement",
+        repetition=0,
+        timeout_seconds=1.0e-6,
+    )
+    assert outcome["status"] == "failed"
+    assert outcome["failure"]["kind"] == "timeout"
 
 
 def test_captured_output_has_a_hard_size_limit(monkeypatch) -> None:
@@ -115,9 +166,7 @@ def test_measurement_covers_and_reconciles_exclusive_stages(
     assert sum(solve["stages_seconds"].values()) <= (
         solve["wall_time_seconds"] + 1.0e-9
     )
-    assert (
-        results.observation_metrics(measured_observation)["unattributed_seconds"] >= 0.0
-    )
+    assert results.outcome_metrics(measured_observation)["unattributed_seconds"] >= 0.0
 
 
 def test_measurement_records_memory_sparse_state_and_numerics(
@@ -169,7 +218,7 @@ def test_profile_is_separate_complete_and_deterministically_sorted(
     assert any(entry["stage"] == "eigenvalue_iteration" for entry in entries)
     assert any(entry["stage"] == "uncategorized" for entry in entries)
     document = _document([profile_observation])
-    assert set(document) == {"workloads", "observations"}
+    assert set(document) == {"workloads", "cases", "outcomes"}
 
 
 def test_checked_document_round_trip_is_deterministic(
@@ -192,7 +241,7 @@ def test_checked_document_rejects_broken_record_relationships(
     """Validation checks exact fields and cross-record relationships."""
     unknown = deepcopy(measured_observation)
     unknown["workload_id"] = "missing"
-    with pytest.raises(ValueError, match="unknown workload_id"):
+    with pytest.raises(ValueError, match="unknown workload"):
         _document([unknown])
 
     document = _document([measured_observation])
@@ -209,10 +258,10 @@ def test_summary_derivation_uses_only_repeated_measurements(
     measurements = []
     for index, wall_time in enumerate((3.0, 1.0, 2.0)):
         record = deepcopy(measured_observation)
-        record["observation_id"] = f"repeat-{index}"
+        record["outcome_id"] = f"repeat-{index}"
         record["solve"]["wall_time_seconds"] = wall_time
         measurements.append(record)
-    summary = results.summarize_observations([*measurements, profile_observation])
+    summary = results.summarize_outcomes([*measurements, profile_observation])
     assert len(summary) == 1
     assert summary[0]["workload_id"] == "g6-z2"
     assert summary[0]["requested_threads"] == 1
@@ -276,14 +325,19 @@ def test_factor_views_are_inspected_after_peak_rss_is_frozen(monkeypatch) -> Non
     monkeypatch.setattr(measurement.resource, "getrusage", recording_getrusage)
     monkeypatch.setattr(measurement, "_factor_record", recording_factor_record)
     measurement.measure_workload(
-        6, 2, requested_threads=1, kind="measurement", repetition=0
+        6,
+        2,
+        case_id=REFERENCE_CASE_ID,
+        requested_threads=1,
+        kind="measurement",
+        repetition=0,
     )
     assert events == ["usage", "usage", "factor"]
 
 
 def test_maintained_mode_worker_sequences_are_exact() -> None:
     """Modes retain the resolved warm-up, repetition, and profiling policy."""
-    smoke = runner._requests("smoke")
+    smoke = runner._plan("smoke").requests
     assert len(smoke) == 3
     assert [request.retain for request in smoke] == [False, True, True]
     assert [request.kind for request in smoke] == [
@@ -292,42 +346,210 @@ def test_maintained_mode_worker_sequences_are_exact() -> None:
         "profile",
     ]
 
-    full = runner._requests("full")
-    assert len(full) == 58
-    assert sum(request.retain for request in full) == 46
-    assert sum(request.kind == "profile" for request in full) == 12
+    baseline = runner._plan("baseline").requests
+    assert len(baseline) == 58
+    assert sum(request.retain for request in baseline) == 46
+    assert sum(request.kind == "profile" for request in baseline) == 12
     endpoint = [
         request
-        for request in full
+        for request in baseline
         if (request.groups, request.axial_layers) == (72, 20)
     ]
     assert [(request.kind, request.retain) for request in endpoint] == [
         ("measurement", True),
         ("profile", True),
     ]
-    endpoint_index = full.index(endpoint[0])
-    assert full[endpoint_index - 1] == runner.WorkerRequest(
-        72, 5, 1, "measurement", 0, False
+    endpoint_index = baseline.index(endpoint[0])
+    assert baseline[endpoint_index - 1] == runner.WorkerRequest(
+        72, 5, REFERENCE_CASE_ID, retain=False
     )
 
-    thread_screen = runner._requests("thread-screen")
+    thread_screen = runner._plan("thread-screen").requests
     assert len(thread_screen) == 16
     assert sum(request.retain for request in thread_screen) == 12
     assert {request.requested_threads for request in thread_screen} == {1, 2, 4, 6}
 
+    solver_requests = runner._plan("solver-screen").requests
+    assert len(solver_requests) == 42
+    assert sum(request.retain for request in solver_requests) == 28
+    assert {request.kind for request in solver_requests} == {"measurement"}
+    assert {request.requested_threads for request in solver_requests} == {1}
+    assert {request.case_id for request in solver_requests} == {
+        case["case_id"] for case in case_records()
+    }
+    assert {(request.groups, request.axial_layers) for request in solver_requests} == {
+        (36, 10),
+        (72, 5),
+    }
 
-def test_full_resume_runs_only_missing_endpoint_after_smaller_warmup() -> None:
-    """A partial full record resumes its endpoint without replaying the matrix."""
-    full = runner._requests("full")
+
+def test_solver_case_definitions_and_explicit_thread_requests_are_exact() -> None:
+    """The diagnostic matrix and operator-selected thread policy stay bounded."""
+    cases = case_records()
+    assert [case["case_id"] for case in cases] == [
+        "direct_node_colamd",
+        "direct_node_mmd_ata",
+        "direct_node_mmd_at_plus_a",
+        "direct_group_colamd",
+        "gmres_none",
+        "gmres_jacobi",
+        "gmres_ilu",
+    ]
+    assert [case["column_ordering"] for case in cases[:4]] == [
+        "COLAMD",
+        "MMD_ATA",
+        "MMD_AT_PLUS_A",
+        "COLAMD",
+    ]
+    requests = runner._plan("thread-screen", "gmres_ilu").requests
+    assert len(requests) == 16
+    assert sum(request.retain for request in requests) == 12
+    assert {request.requested_threads for request in requests} == {1, 2, 4, 6}
+    assert {request.case_id for request in requests} == {"gmres_ilu"}
+    assert runner._plan("thread-screen").output_name == (
+        "thread_screen_direct_node_colamd.json"
+    )
+    assert runner._plan("thread-screen", "gmres_ilu").output_name == (
+        "thread_screen_gmres_ilu.json"
+    )
+    assert runner._plan("baseline").output_name == "baseline_direct_node_colamd.json"
+    assert runner._plan("baseline", "gmres_ilu").output_name == (
+        "baseline_gmres_ilu.json"
+    )
+    alternate_baseline = runner._plan("baseline", "gmres_ilu").requests
+    assert len(alternate_baseline) == 58
+    assert sum(request.retain for request in alternate_baseline) == 46
+    assert {request.kind for request in alternate_baseline} == {
+        "measurement",
+        "profile",
+    }
+    assert {request.case_id for request in alternate_baseline} == {"gmres_ilu"}
+
+
+def test_group_major_permutation_round_trip_and_direct_factor_statistics(
+    direct_ordering_outcome: dict[str, object],
+    measured_observation: dict[str, object],
+) -> None:
+    """Explicit packing preserves results and records applied permutations."""
+    permutation = solver_screen.packing_permutation(3, 2)
+    assert permutation.tolist() == [0, 2, 4, 1, 3, 5]
+    group_major = list(range(6))
+    restored = [None] * 6
+    for new, old in enumerate(permutation):
+        restored[old] = group_major[new]
+    assert [group_major[index] for index in permutation] == [0, 2, 4, 1, 3, 5]
+    assert [restored[index] for index in permutation] == group_major
+
+    assert direct_ordering_outcome["status"] == "success"
+    solve = direct_ordering_outcome["solve"]
+    factor = solve["factorization"]
+    assert factor["kind"] == "complete"
+    assert len(factor["packing_new_to_old"]) == 732
+    assert len(factor["row_permutation"]) == 732
+    assert len(factor["column_permutation"]) == 732
+    assert factor["lower"]["stored_nonzeros"] > 0
+    assert factor["upper"]["stored_nonzeros"] > 0
+    assert "krylov_iterations_by_outer" not in solve
+    assert "total_krylov_iterations" not in solve
+    assert "linear_relative_residuals_by_outer" not in solve
+    assert solve["numerical_checks"]["keff"] == pytest.approx(
+        measured_observation["solve"]["numerical_checks"]["keff"], rel=1.0e-12
+    )
+
+
+def test_gmres_screen_aggregates_iterations_and_incomplete_factor_statistics(
+    gmres_ilu_outcome: dict[str, object],
+) -> None:
+    """One reused ILU setup and all per-outer Krylov counts are retained."""
+    assert gmres_ilu_outcome["status"] == "success"
+    solve = gmres_ilu_outcome["solve"]
+    assert len(solve["krylov_iterations_by_outer"]) == solve["outer_iterations"]
+    assert solve["total_krylov_iterations"] == sum(solve["krylov_iterations_by_outer"])
+    assert solve["total_krylov_iterations"] > solve["outer_iterations"]
+    assert solve["factorization"]["kind"] == "incomplete"
+    assert solve["timings_seconds"]["linear_solve_setup"] >= 0.0
+    assert solve["timings_seconds"]["linear_rhs_solves"] >= 0.0
+
+
+def test_outcome_summary_labels_outer_and_optional_krylov(
+    capsys: pytest.CaptureFixture[str],
+    direct_ordering_outcome: dict[str, object],
+    gmres_ilu_outcome: dict[str, object],
+) -> None:
+    """Console summaries distinguish outer and optional Krylov work."""
+    runner._print_outcome(direct_ordering_outcome)
+    direct_text = capsys.readouterr().out
+    assert "outer=" in direct_text
+    assert "krylov=" not in direct_text
+
+    runner._print_outcome(gmres_ilu_outcome)
+    gmres_text = capsys.readouterr().out
+    assert "outer=" in gmres_text
+    assert "krylov=" in gmres_text
+
+
+def test_solver_failures_are_structured_and_terminal_on_resume(monkeypatch) -> None:
+    """A bounded worker failure is retained and suppresses the rest of its cell."""
+
+    def fail(*_args, **_kwargs):
+        raise orchestration.PerformanceWorkerError("timeout", "deadline")
+
+    monkeypatch.setattr(orchestration, "_launch_worker", fail)
+    outcome = orchestration.launch_outcome(
+        36,
+        10,
+        case_id="gmres_none",
+        requested_threads=1,
+        kind="measurement",
+        repetition=0,
+    )
+    assert outcome["status"] == "failed"
+    assert outcome["failure"] == {"kind": "timeout", "message": "deadline"}
+    requests = tuple(
+        request
+        for request in runner._plan("solver-screen").requests
+        if request.case_id == "gmres_none"
+        and (request.groups, request.axial_layers) == (36, 10)
+    )
+    assert not runner._pending_requests(requests, [outcome])
+
+
+def test_document_accepts_success_and_failure_records(
+    direct_ordering_outcome: dict[str, object],
+) -> None:
+    """One checked envelope accepts every strategy and terminal failure."""
+    failure = orchestration.failed_outcome(
+        6,
+        2,
+        "gmres_none",
+        requested_threads=1,
+        measurement_kind="measurement",
+        repetition=0,
+        failure_kind="worker_error",
+        message="failed",
+    )
+    failure["resource_limits"] = direct_ordering_outcome["resource_limits"]
+    document = results.build_document(
+        workloads=[measurement.workload_record(6, 2)],
+        outcomes=[direct_ordering_outcome, failure],
+    )
+    results.check_document(document)
+    assert set(document) == {"workloads", "cases", "outcomes"}
+    assert set(_document([])) == {"workloads", "cases", "outcomes"}
+
+
+def test_baseline_resume_runs_only_missing_endpoint_after_smaller_warmup() -> None:
+    """A partial baseline resumes its endpoint without replaying the matrix."""
+    baseline = runner._plan("baseline").requests
     completed = [
-        {"observation_id": runner._request_observation_id(request)}
-        for request in full
+        {"outcome_id": runner._request_id(request), "status": "success"}
+        for request in baseline
         if request.retain and (request.groups, request.axial_layers) != (72, 20)
     ]
 
-    resumed = runner._resume_requests(full, completed)
+    resumed = runner._pending_requests(baseline, completed)
 
-    assert resumed[0] == runner.WorkerRequest(72, 5, 1, "measurement", 0, False)
+    assert resumed[0] == runner.WorkerRequest(72, 5, REFERENCE_CASE_ID, retain=False)
     endpoint_requests = [
         (request.groups, request.axial_layers, request.kind) for request in resumed[1:]
     ]
@@ -339,29 +561,32 @@ def test_full_resume_runs_only_missing_endpoint_after_smaller_warmup() -> None:
 
 def test_resume_rejects_unexpected_observations_and_skips_completed_work() -> None:
     """Resume retains only recognized observations and skips completed work."""
-    full = runner._requests("full")
+    baseline = runner._plan("baseline").requests
     completed = [
-        {"observation_id": runner._request_observation_id(request)}
-        for request in full
+        {"outcome_id": runner._request_id(request), "status": "success"}
+        for request in baseline
         if request.retain
     ]
 
-    assert runner._resume_requests(full, completed) == ()
+    assert not runner._pending_requests(baseline, completed)
     with pytest.raises(ValueError, match="unexpected"):
-        runner._resume_requests(full, [{"observation_id": "unknown"}])
+        runner._pending_requests(
+            baseline, [{"outcome_id": "unknown", "status": "success"}]
+        )
 
 
 def test_resume_replays_required_warmups_for_every_mode() -> None:
-    """Resume handles a partial smoke record without relying on full-mode rules."""
-    smoke = runner._requests("smoke")
+    """Resume handles a partial smoke record without baseline-specific rules."""
+    smoke = runner._plan("smoke").requests
     profile = next(request for request in smoke if request.kind == "profile")
     measurement = next(
         request for request in smoke if request.retain and request.kind == "measurement"
     )
 
-    assert runner._resume_requests(smoke, []) == smoke
-    assert runner._resume_requests(
-        smoke, [{"observation_id": runner._request_observation_id(measurement)}]
+    assert runner._pending_requests(smoke, []) == smoke
+    assert runner._pending_requests(
+        smoke,
+        [{"outcome_id": runner._request_id(measurement), "status": "success"}],
     ) == (profile,)
 
 
@@ -379,12 +604,12 @@ def test_smoke_runner_discards_warmup_and_checkpoints_results(
         launched.append((args, kwargs))
         return deepcopy(next(returned))
 
-    monkeypatch.setattr(runner, "launch_observation", fake_launch)
+    monkeypatch.setattr(runner, "launch_outcome", fake_launch)
     output_path = runner.run("smoke", tmp_path)
     document = results.read_document(output_path)
     assert len(launched) == 3
     assert len(document["workloads"]) == 1
-    assert [record["kind"] for record in document["observations"]] == [
+    assert [record["kind"] for record in document["outcomes"]] == [
         "measurement",
         "profile",
     ]

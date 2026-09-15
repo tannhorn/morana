@@ -1,4 +1,4 @@
-"""Internal fresh-process entry point for one performance observation."""
+"""Internal fresh-process entry point for one performance outcome."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--requested-threads", type=int, required=True)
     parser.add_argument("--kind", choices=("measurement", "profile"), required=True)
     parser.add_argument("--repetition", type=int)
+    parser.add_argument("--solver-case", required=True)
     parser.add_argument("--address-space-limit-bytes", type=int, required=True)
     parser.add_argument("--output-file-limit-bytes", type=int, required=True)
     return parser.parse_args()
@@ -47,17 +48,31 @@ def main() -> None:
     arguments = _arguments()
     _limit_address_space(arguments.address_space_limit_bytes)
     _limit_output_files(arguments.output_file_limit_bytes)
-    # pylint: disable-next=import-outside-toplevel
-    from examples.many_group_performance.measurement import measure_workload
+    if arguments.solver_case == "direct_node_colamd":
+        # pylint: disable-next=import-outside-toplevel
+        from examples.many_group_performance.measurement import measure_workload
 
-    observation = measure_workload(
-        arguments.groups,
-        arguments.axial_layers,
-        requested_threads=arguments.requested_threads,
-        kind=arguments.kind,
-        repetition=arguments.repetition,
-    )
-    print(json.dumps(observation, sort_keys=True, allow_nan=False))
+        outcome = measure_workload(
+            arguments.groups,
+            arguments.axial_layers,
+            case_id=arguments.solver_case,
+            requested_threads=arguments.requested_threads,
+            kind=arguments.kind,
+            repetition=arguments.repetition,
+        )
+    else:
+        # pylint: disable-next=import-outside-toplevel
+        from examples.many_group_performance.solver_screen import measure_solver_case
+
+        outcome = measure_solver_case(
+            arguments.groups,
+            arguments.axial_layers,
+            case_id=arguments.solver_case,
+            requested_threads=arguments.requested_threads,
+            kind=arguments.kind,
+            repetition=arguments.repetition,
+        )
+    print(json.dumps(outcome, sort_keys=True, allow_nan=False))
 
 
 if __name__ == "__main__":

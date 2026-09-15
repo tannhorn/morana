@@ -9,7 +9,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import ExitStack
 import cProfile
-from dataclasses import asdict
 from datetime import datetime, timezone
 import os
 from pathlib import Path
@@ -30,6 +29,7 @@ from morana.solvers import finite_volume
 
 from examples.many_group_performance.orchestration import (
     THREAD_ENVIRONMENT_VARIABLES,
+    outcome_identifier,
 )
 from examples.many_group_performance.results import STAGE_NAMES
 from examples.many_group_performance.workload import (
@@ -390,15 +390,6 @@ def _profile_entries(profile: cProfile.Profile) -> list[dict[str, object]]:
     )
 
 
-def _settings_record() -> dict[str, object]:
-    """Serialize every frozen direct-power control explicitly."""
-    settings = solve_settings()
-    record = asdict(settings)
-    record["inner_linear_solve"]["strategy"] = settings.inner_linear_solve.strategy
-    record["eigenvalue_iteration"]["kind"] = settings.eigenvalue_iteration.kind
-    return record
-
-
 def _numerical_record(result: Result) -> dict[str, object]:
     """Return final convergence and scalar-balance checks."""
     final = result.execution_report.final_outer_iteration
@@ -415,17 +406,12 @@ def _numerical_record(result: Result) -> dict[str, object]:
     }
 
 
-def measure_workload(
+def _measure_worker_call(
     groups: int,
     axial_layers: int,
-    *,
-    requested_threads: int,
-    kind: str,
-    repetition: int | None,
-) -> dict[str, object]:
-    """Measure one workload in the current fresh worker process."""
-    if kind not in {"measurement", "profile"}:
-        raise ValueError("kind must be 'measurement' or 'profile'")
+    solve: Callable[[Any], tuple[Result, dict[str, int]]],
+) -> tuple[Result, dict[str, object]]:
+    """Measure shared fresh-worker setup, execution, CPU time, and peak RSS."""
     started_at_utc = datetime.now(timezone.utc).isoformat()
     repository = _repository_record()
     environment = _environment_record()
@@ -435,55 +421,18 @@ def measure_workload(
     configuration_seconds = (time.perf_counter_ns() - configuration_start) / 1.0e9
     configuration_rss = _current_rss_bytes()
 
-    recorder = _Recorder()
-    profile = cProfile.Profile() if kind == "profile" else None
     usage_before = resource.getrusage(resource.RUSAGE_SELF)
     solve_start = time.perf_counter_ns()
-    try:
-        if profile is not None:
-            profile.enable()
-        result = _instrumented_solve(configuration, recorder)
-    finally:
-        if profile is not None:
-            profile.disable()
+    result, checkpoints = solve(configuration)
     solve_seconds = (time.perf_counter_ns() - solve_start) / 1.0e9
     usage_after = resource.getrusage(resource.RUSAGE_SELF)
-    recorder.require_expected_calls()
-
-    user_seconds = usage_after.ru_utime - usage_before.ru_utime
-    system_seconds = usage_after.ru_stime - usage_before.ru_stime
     peak_rss = max(
         normalize_peak_rss_bytes(usage_after.ru_maxrss, platform.system()),
         imported_rss,
         configuration_rss,
-        *recorder.checkpoints.values(),
+        *checkpoints.values(),
     )
-    if recorder.factorization_handle is None:
-        raise RuntimeError("benchmark did not retain the direct factorization")
-    # Freeze peak RSS above, then inspect L and U: SciPy may materialize sparse
-    # views while exposing these statistics, which is observer overhead rather
-    # than solver memory.
-    factorization_record = _factor_record(recorder.factorization_handle)
-    recorder.factorization_handle = None
-    stages = {name: recorder.stage_nanoseconds[name] / 1.0e9 for name in STAGE_NAMES}
-    stage_total = sum(stages.values())
-    if solve_seconds - stage_total < -1.0e-9:
-        raise RuntimeError("exclusive stage times exceed end-to-end solve time")
-    report = result.execution_report
-    if recorder.factorized_rhs_solves != report.iterations:
-        raise RuntimeError(
-            "direct RHS-solve count does not match completed outer iterations"
-        )
-    observation_id = (
-        f"g{groups}-z{axial_layers}-t{requested_threads}-{kind}-"
-        f"{'none' if repetition is None else repetition}"
-    )
-    return {
-        "observation_id": observation_id,
-        "workload_id": f"g{groups}-z{axial_layers}",
-        "kind": kind,
-        "repetition": repetition,
-        "requested_threads": requested_threads,
+    return result, {
         "started_at_utc": started_at_utc,
         "repository": repository,
         "environment": environment,
@@ -494,16 +443,96 @@ def measure_workload(
         },
         "solve": {
             "wall_time_seconds": solve_seconds,
-            "user_cpu_time_seconds": user_seconds,
-            "system_cpu_time_seconds": system_seconds,
+            "user_cpu_time_seconds": usage_after.ru_utime - usage_before.ru_utime,
+            "system_cpu_time_seconds": usage_after.ru_stime - usage_before.ru_stime,
             "peak_rss_bytes": peak_rss,
-            "rss_checkpoints_bytes": recorder.checkpoints,
-            "stages_seconds": stages,
-            "matrices": recorder.matrices,
-            "factorization": factorization_record,
-            "outer_iterations": report.iterations,
-            "numerical_checks": _numerical_record(result),
         },
+    }
+
+
+def _worker_fields(
+    common: dict[str, object], solve_fields: dict[str, object]
+) -> dict[str, object]:
+    """Combine shared worker measurements with strategy-specific solve fields."""
+    return {
+        "started_at_utc": common["started_at_utc"],
+        "repository": common["repository"],
+        "environment": common["environment"],
+        "configuration": common["configuration"],
+        "solve": {**common["solve"], **solve_fields},
+    }
+
+
+def measure_workload(
+    groups: int,
+    axial_layers: int,
+    *,
+    case_id: str,
+    requested_threads: int,
+    kind: str,
+    repetition: int | None,
+) -> dict[str, object]:
+    """Measure one workload in the current fresh worker process."""
+    if kind not in {"measurement", "profile"}:
+        raise ValueError("kind must be 'measurement' or 'profile'")
+    recorder = _Recorder()
+    profile = cProfile.Profile() if kind == "profile" else None
+
+    def solve(configuration: Any) -> tuple[Result, dict[str, int]]:
+        try:
+            if profile is not None:
+                profile.enable()
+            result = _instrumented_solve(configuration, recorder)
+        finally:
+            if profile is not None:
+                profile.disable()
+        return result, recorder.checkpoints
+
+    result, common = _measure_worker_call(groups, axial_layers, solve)
+    recorder.require_expected_calls()
+    if recorder.factorization_handle is None:
+        raise RuntimeError("benchmark did not retain the direct factorization")
+    # Freeze peak RSS above, then inspect L and U: SciPy may materialize sparse
+    # views while exposing these statistics, which is observer overhead rather
+    # than solver memory.
+    factorization_record = _factor_record(recorder.factorization_handle)
+    recorder.factorization_handle = None
+    stages = {name: recorder.stage_nanoseconds[name] / 1.0e9 for name in STAGE_NAMES}
+    stage_total = sum(stages.values())
+    solve_seconds = float(common["solve"]["wall_time_seconds"])
+    if solve_seconds - stage_total < -1.0e-9:
+        raise RuntimeError("exclusive stage times exceed end-to-end solve time")
+    report = result.execution_report
+    if recorder.factorized_rhs_solves != report.iterations:
+        raise RuntimeError(
+            "direct RHS-solve count does not match completed outer iterations"
+        )
+    outcome_id = outcome_identifier(
+        groups,
+        axial_layers,
+        case_id,
+        requested_threads=requested_threads,
+        kind=kind,
+        repetition=repetition,
+    )
+    return {
+        "outcome_id": outcome_id,
+        "case_id": case_id,
+        "workload_id": f"g{groups}-z{axial_layers}",
+        "kind": kind,
+        "repetition": repetition,
+        "requested_threads": requested_threads,
+        **_worker_fields(
+            common,
+            {
+                "rss_checkpoints_bytes": recorder.checkpoints,
+                "stages_seconds": stages,
+                "matrices": recorder.matrices,
+                "factorization": factorization_record,
+                "outer_iterations": report.iterations,
+                "numerical_checks": _numerical_record(result),
+            },
+        ),
         "profile": (
             None
             if profile is None
@@ -512,11 +541,13 @@ def measure_workload(
                 "entries": _profile_entries(profile),
             }
         ),
+        "status": "success",
+        "failure": None,
     }
 
 
 def workload_record(groups: int, axial_layers: int) -> dict[str, object]:
-    """Return the frozen workload definition referenced by observations."""
+    """Return the frozen workload definition referenced by outcomes."""
     cells = 61 * axial_layers
     return {
         "workload_id": f"g{groups}-z{axial_layers}",
@@ -525,5 +556,4 @@ def workload_record(groups: int, axial_layers: int) -> dict[str, object]:
         "active_cells": cells,
         "unknowns": cells * groups,
         "array_digests": dict(FROZEN_ARRAY_DIGESTS[groups]),
-        "settings": _settings_record(),
     }

@@ -1,5 +1,9 @@
 """Checked JSON records for the many-group performance study."""
 
+# Exact checked field sets intentionally mirror the corresponding result
+# records rather than weakening validation through a shared generic schema.
+# pylint: disable=duplicate-code
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
@@ -13,6 +17,7 @@ from typing import Any
 
 from examples.many_group_performance.orchestration import (
     THREAD_ENVIRONMENT_VARIABLES,
+    outcome_identifier,
 )
 
 STAGE_NAMES = (
@@ -33,7 +38,7 @@ RSS_CHECKPOINT_NAMES = (
     "completed_result",
 )
 
-_DOCUMENT_FIELDS = {"workloads", "observations"}
+_DOCUMENT_FIELDS = {"workloads", "cases", "outcomes"}
 _WORKLOAD_FIELDS = {
     "workload_id",
     "groups",
@@ -41,20 +46,11 @@ _WORKLOAD_FIELDS = {
     "active_cells",
     "unknowns",
     "array_digests",
-    "settings",
 }
 _DIGEST_FIELDS = {"diffusion", "absorption", "scattering", "fission_transfer"}
-_SETTINGS_FIELDS = {
-    "inner_linear_solve",
-    "max_outer_iterations",
-    "keff_change_tolerance",
-    "flux_change_tolerance",
-    "keff_relative_residual_tolerance",
-    "flux_nonnegativity_tolerance",
-    "eigenvalue_iteration",
-}
-_OBSERVATION_FIELDS = {
-    "observation_id",
+_OUTCOME_FIELDS = {
+    "outcome_id",
+    "case_id",
     "workload_id",
     "kind",
     "repetition",
@@ -66,6 +62,8 @@ _OBSERVATION_FIELDS = {
     "configuration",
     "solve",
     "profile",
+    "status",
+    "failure",
 }
 _REPOSITORY_FIELDS = {"commit", "tracked_worktree_state", "tracked_changes"}
 _ENVIRONMENT_FIELDS = {
@@ -127,6 +125,46 @@ _PROFILE_ENTRY_FIELDS = {
     "stage",
 }
 _PROFILE_STAGES = _STAGE_FIELDS | {"uncategorized"}
+_FAILURE_KINDS = {
+    "timeout",
+    "worker_error",
+    "invalid_output",
+    "output_limit",
+    "resource_limit",
+    "krylov_failure",
+    "preconditioner_failure",
+    "numerical_failure",
+}
+_DIAGNOSTIC_SOLVE_FIELDS = {
+    "wall_time_seconds",
+    "user_cpu_time_seconds",
+    "system_cpu_time_seconds",
+    "peak_rss_bytes",
+    "rss_checkpoints_bytes",
+    "timings_seconds",
+    "cpu_times_seconds",
+    "matrices",
+    "factorization",
+    "outer_iterations",
+    "numerical_checks",
+}
+_DIAGNOSTIC_KRYLOV_FIELDS = {
+    "krylov_iterations_by_outer",
+    "total_krylov_iterations",
+    "linear_relative_residuals_by_outer",
+}
+_DIAGNOSTIC_TIMING_FIELDS = {
+    "loss_assembly",
+    "fission_assembly",
+    "linear_solve_setup",
+    "linear_rhs_solves",
+}
+_DIAGNOSTIC_CPU_FIELDS = {
+    "linear_solve_setup_user",
+    "linear_solve_setup_system",
+    "linear_rhs_solves_user",
+    "linear_rhs_solves_system",
+}
 
 
 def _record(value: object, fields: set[str], location: str) -> dict[str, Any]:
@@ -203,39 +241,6 @@ def _check_workload(value: object) -> tuple[str, dict[str, Any]]:
         if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
             raise ValueError(f"array_digests.{name} must be a SHA-256 digest")
 
-    settings = _record(workload["settings"], _SETTINGS_FIELDS, "settings")
-    inner = _record(
-        settings["inner_linear_solve"],
-        {"relative_residual_tolerance", "strategy"},
-        "settings.inner_linear_solve",
-    )
-    if inner["strategy"] != "direct":
-        raise ValueError("settings.inner_linear_solve.strategy must be 'direct'")
-    _number(
-        inner["relative_residual_tolerance"],
-        "settings.inner_linear_solve.relative_residual_tolerance",
-        positive=True,
-    )
-    _integer(
-        settings["max_outer_iterations"],
-        "settings.max_outer_iterations",
-        positive=True,
-    )
-    for field in (
-        "keff_change_tolerance",
-        "flux_change_tolerance",
-        "keff_relative_residual_tolerance",
-    ):
-        _number(settings[field], f"settings.{field}", positive=True)
-    _number(
-        settings["flux_nonnegativity_tolerance"],
-        "settings.flux_nonnegativity_tolerance",
-    )
-    iteration = _record(
-        settings["eigenvalue_iteration"], {"kind"}, "settings.eigenvalue_iteration"
-    )
-    if iteration["kind"] != "power":
-        raise ValueError("settings.eigenvalue_iteration.kind must be 'power'")
     return expected_id, workload
 
 
@@ -387,51 +392,219 @@ def _check_solve(
         )
 
 
-def _check_observation(
-    value: object, workloads: Mapping[str, Mapping[str, Any]]
-) -> str:
-    """Validate and return one observation identifier."""
-    observation = _record(value, _OBSERVATION_FIELDS, "observation")
-    observation_id = observation["observation_id"]
-    workload_id = observation["workload_id"]
-    if not isinstance(observation_id, str) or not isinstance(workload_id, str):
-        raise ValueError("observation identifiers must be strings")
-    if workload_id not in workloads:
-        raise ValueError(f"observation references unknown workload_id {workload_id!r}")
-    kind = observation["kind"]
-    if kind not in {"measurement", "profile"}:
-        raise ValueError("observation.kind must be 'measurement' or 'profile'")
-    repetition = observation["repetition"]
-    if kind == "measurement":
-        _integer(repetition, "observation.repetition")
-    elif repetition is not None:
-        raise ValueError("profile observation repetition must be null")
-    threads = _integer(
-        observation["requested_threads"], "observation.requested_threads", positive=True
+def _check_diagnostic_factorization(
+    value: object, case: Mapping[str, Any], expected_size: int
+) -> None:
+    """Validate retained complete or incomplete factor details."""
+    if value is None:
+        if case["case_id"] == "gmres_ilu" or case["strategy"] == "direct":
+            raise ValueError("case must retain factorization statistics")
+        return
+    factor = _record(
+        value,
+        {
+            "kind",
+            "lower",
+            "upper",
+            "row_permutation",
+            "column_permutation",
+            "packing_new_to_old",
+        },
+        "solve.factorization",
     )
-    _timestamp(observation["started_at_utc"], "observation.started_at_utc")
-    _check_repository(observation["repository"])
-    _check_environment(observation["environment"], threads)
+    expected_kind = "complete" if case["strategy"] == "direct" else "incomplete"
+    if factor["kind"] != expected_kind:
+        raise ValueError("factorization kind does not match solver case")
+    for part in ("lower", "upper"):
+        _check_sparse(factor[part], f"solve.factorization.{part}", expected_size)
+    for name in ("row_permutation", "column_permutation"):
+        permutation = factor[name]
+        if not isinstance(permutation, list) or sorted(permutation) != list(
+            range(expected_size)
+        ):
+            raise ValueError(f"solve.factorization.{name} is not a permutation")
+    packing = factor["packing_new_to_old"]
+    if case["packing"] == "group_major_node_fastest":
+        if not isinstance(packing, list) or sorted(packing) != list(
+            range(expected_size)
+        ):
+            raise ValueError("packing_new_to_old is not a permutation")
+    elif packing is not None:
+        raise ValueError("node-major case must not retain a packing permutation")
+
+
+# pylint: disable-next=too-many-branches
+def _check_diagnostic_solve(
+    value: object,
+    *,
+    case: Mapping[str, Any],
+    configuration: Mapping[str, Any],
+    expected_size: int,
+) -> None:
+    """Validate strategy-comparison solve measurements and diagnostics."""
+    expected_fields = _DIAGNOSTIC_SOLVE_FIELDS | (
+        _DIAGNOSTIC_KRYLOV_FIELDS if case["strategy"] == "gmres" else set()
+    )
+    solve = _record(value, expected_fields, "solve")
+    wall = _number(solve["wall_time_seconds"], "solve.wall_time_seconds", positive=True)
+    for field in ("user_cpu_time_seconds", "system_cpu_time_seconds"):
+        _number(solve[field], f"solve.{field}")
+    peak = _integer(solve["peak_rss_bytes"], "solve.peak_rss_bytes")
+    checkpoints = _record(
+        solve["rss_checkpoints_bytes"],
+        {
+            "loss_assembly",
+            "fission_matrix_assembly",
+            "linear_solve_setup",
+            "completed_result",
+        },
+        "solve.rss_checkpoints_bytes",
+    )
+    for name, value_ in checkpoints.items():
+        _integer(value_, f"solve.rss_checkpoints_bytes.{name}")
+    if peak < max(
+        *checkpoints.values(),
+        configuration["import_baseline_rss_bytes"],
+        configuration["completed_rss_bytes"],
+    ):
+        raise ValueError("solve peak RSS is smaller than an RSS observation")
+    timings = _record(
+        solve["timings_seconds"], _DIAGNOSTIC_TIMING_FIELDS, "solve.timings_seconds"
+    )
+    cpu_times = _record(
+        solve["cpu_times_seconds"], _DIAGNOSTIC_CPU_FIELDS, "solve.cpu_times_seconds"
+    )
+    for name, value_ in (*timings.items(), *cpu_times.items()):
+        _number(value_, f"solve timing {name}")
+    if sum(timings.values()) > wall + 1.0e-9:
+        raise ValueError("diagnostic component timings exceed wall time")
+    matrices = _record(solve["matrices"], {"loss", "fission"}, "solve.matrices")
+    for name, matrix in matrices.items():
+        _check_sparse(matrix, f"solve.matrices.{name}", expected_size)
+    _check_diagnostic_factorization(solve["factorization"], case, expected_size)
+    iterations = _integer(
+        solve["outer_iterations"], "solve.outer_iterations", positive=True
+    )
+    if case["strategy"] == "gmres":
+        krylov = solve["krylov_iterations_by_outer"]
+        residuals = solve["linear_relative_residuals_by_outer"]
+        if not isinstance(krylov, list) or len(krylov) != iterations:
+            raise ValueError("per-outer Krylov counts do not match outer iterations")
+        if not isinstance(residuals, list) or len(residuals) != iterations:
+            raise ValueError("per-outer residuals do not match outer iterations")
+        for value_ in krylov:
+            _integer(value_, "Krylov iteration count", positive=True)
+        for value_ in residuals:
+            _number(value_, "linear relative residual")
+        total = _integer(
+            solve["total_krylov_iterations"], "total Krylov iterations", positive=True
+        )
+        if total != sum(krylov):
+            raise ValueError("total Krylov iterations do not match per-outer counts")
+    checks = _record(solve["numerical_checks"], _NUMERICAL_FIELDS, "checks")
+    for name, value_ in checks.items():
+        if name == "scalar_balance_residual":
+            if (
+                isinstance(value_, bool)
+                or not isinstance(value_, (int, float))
+                or not math.isfinite(value_)
+            ):
+                raise ValueError("scalar balance residual must be finite")
+        else:
+            _number(value_, f"solve.numerical_checks.{name}", positive=name == "keff")
+
+
+# pylint: disable-next=too-many-branches
+def _check_outcome(
+    value: object,
+    workloads: Mapping[str, Mapping[str, Any]],
+    cases: Mapping[str, Mapping[str, Any]],
+) -> str:
+    """Validate and return one terminal outcome identifier."""
+    outcome = _record(value, _OUTCOME_FIELDS, "outcome")
+    outcome_id = outcome["outcome_id"]
+    workload_id = outcome["workload_id"]
+    case_id = outcome["case_id"]
+    if not all(isinstance(item, str) for item in (outcome_id, workload_id, case_id)):
+        raise ValueError("outcome identifiers must be strings")
+    if workload_id not in workloads or case_id not in cases:
+        raise ValueError("outcome has an unknown workload or solver case")
+    kind = outcome["kind"]
+    if kind not in {"measurement", "profile"}:
+        raise ValueError("outcome.kind must be 'measurement' or 'profile'")
+    repetition = outcome["repetition"]
+    if repetition is not None:
+        _integer(repetition, "outcome.repetition")
+    if kind == "profile" and repetition is not None:
+        raise ValueError("profile outcome repetition must be null")
+    threads = _integer(
+        outcome["requested_threads"], "outcome.requested_threads", positive=True
+    )
+    workload = workloads[workload_id]
+    expected_id = outcome_identifier(
+        int(workload["groups"]),
+        int(workload["axial_layers"]),
+        case_id,
+        requested_threads=threads,
+        kind=kind,
+        repetition=repetition,
+    )
+    if outcome_id != expected_id:
+        raise ValueError("outcome has an invalid identifier")
+    _timestamp(outcome["started_at_utc"], "outcome.started_at_utc")
     limits = _record(
-        observation["resource_limits"],
+        outcome["resource_limits"],
         _RESOURCE_LIMIT_FIELDS,
-        "observation.resource_limits",
+        "outcome.resource_limits",
     )
     _number(
         limits["timeout_seconds"],
-        "observation.resource_limits.timeout_seconds",
+        "outcome.resource_limits.timeout_seconds",
         positive=True,
     )
     for field in ("address_space_bytes", "captured_output_bytes_per_stream"):
-        _integer(limits[field], f"observation.resource_limits.{field}", positive=True)
-    configuration = _check_configuration(observation["configuration"])
-    _check_solve(
-        observation["solve"],
-        configuration=configuration,
-        expected_size=workloads[workload_id]["unknowns"],
-    )
-    _check_profile(observation["profile"], kind)
-    return observation_id
+        _integer(limits[field], f"outcome.resource_limits.{field}", positive=True)
+    if outcome["status"] == "failed":
+        if any(
+            outcome[field] is not None
+            for field in (
+                "repository",
+                "environment",
+                "configuration",
+                "solve",
+                "profile",
+            )
+        ):
+            raise ValueError("failed outcome contains partial measurement data")
+        failure = _record(outcome["failure"], {"kind", "message"}, "outcome.failure")
+        if failure["kind"] not in _FAILURE_KINDS or not isinstance(
+            failure["message"], str
+        ):
+            raise ValueError("failed outcome has invalid failure data")
+        return outcome_id
+    if outcome["status"] != "success" or outcome["failure"] is not None:
+        raise ValueError("outcome has inconsistent success status")
+    _check_repository(outcome["repository"])
+    _check_environment(outcome["environment"], threads)
+    configuration = _check_configuration(outcome["configuration"])
+    solve = outcome["solve"]
+    if not isinstance(solve, dict):
+        raise ValueError("successful outcome.solve must be a JSON object")
+    if "stages_seconds" in solve:
+        _check_solve(
+            solve,
+            configuration=configuration,
+            expected_size=workload["unknowns"],
+        )
+    else:
+        _check_diagnostic_solve(
+            solve,
+            case=cases[case_id],
+            configuration=configuration,
+            expected_size=int(workload["unknowns"]),
+        )
+    _check_profile(outcome["profile"], kind)
+    return outcome_id
 
 
 def check_document(document: object) -> dict[str, Any]:
@@ -439,19 +612,27 @@ def check_document(document: object) -> dict[str, Any]:
     checked = _record(document, _DOCUMENT_FIELDS, "performance result")
     if not isinstance(checked["workloads"], list):
         raise ValueError("performance result workloads must be an array")
-    if not isinstance(checked["observations"], list):
-        raise ValueError("performance result observations must be an array")
+    if not isinstance(checked["cases"], list):
+        raise ValueError("performance result cases must be an array")
+    if not isinstance(checked["outcomes"], list):
+        raise ValueError("performance result outcomes must be an array")
+    # pylint: disable-next=import-outside-toplevel
+    from examples.many_group_performance.cases import case_records
+
+    if checked["cases"] != case_records():
+        raise ValueError("performance result cases differ from frozen definitions")
     workloads: dict[str, dict[str, Any]] = {}
     for candidate in checked["workloads"]:
         workload_id, workload = _check_workload(candidate)
         if workload_id in workloads:
             raise ValueError("performance result contains duplicate workload_id values")
         workloads[workload_id] = workload
-    observation_ids = []
-    for candidate in checked["observations"]:
-        observation_ids.append(_check_observation(candidate, workloads))
-    if len(set(observation_ids)) != len(observation_ids):
-        raise ValueError("performance result contains duplicate observation_id values")
+    cases = {item["case_id"]: item for item in checked["cases"]}
+    outcome_ids = [
+        _check_outcome(candidate, workloads, cases) for candidate in checked["outcomes"]
+    ]
+    if len(set(outcome_ids)) != len(outcome_ids):
+        raise ValueError("performance result contains duplicate outcome_id values")
     return checked
 
 
@@ -472,22 +653,30 @@ def write_document(path: str | Path, document: Mapping[str, object]) -> None:
         serialized = json.dumps(checked, indent=2, sort_keys=True, allow_nan=False)
     except (TypeError, ValueError) as exc:
         raise ValueError("performance result contains a non-JSON value") from exc
-    Path(path).write_text(serialized + "\n", encoding="utf-8")
+    destination = Path(path)
+    temporary = destination.with_suffix(destination.suffix + ".tmp")
+    temporary.write_text(serialized + "\n", encoding="utf-8")
+    temporary.replace(destination)
 
 
-def observation_metrics(observation: Mapping[str, object]) -> dict[str, float]:
-    """Derive reporting metrics omitted from the stored observation."""
-    configuration = observation["configuration"]
-    solve = observation["solve"]
+def outcome_metrics(outcome: Mapping[str, object]) -> dict[str, float]:
+    """Derive reporting metrics omitted from one successful outcome."""
+    configuration = outcome["configuration"]
+    solve = outcome["solve"]
     total_cpu = float(solve["user_cpu_time_seconds"]) + float(
         solve["system_cpu_time_seconds"]
     )
     factorization = solve["factorization"]
-    factorization_bytes = sum(
-        int(factorization[part][field])
-        for part in ("lower", "upper")
-        for field in ("data_bytes", "indices_bytes", "indptr_bytes")
+    factorization_bytes = (
+        0
+        if factorization is None
+        else sum(
+            int(factorization[part][field])
+            for part in ("lower", "upper")
+            for field in ("data_bytes", "indices_bytes", "indptr_bytes")
+        )
     )
+    timings = solve.get("stages_seconds", solve.get("timings_seconds", {}))
     wall_time = float(solve["wall_time_seconds"])
     return {
         "configuration_wall_time_seconds": float(configuration["wall_time_seconds"]),
@@ -503,39 +692,49 @@ def observation_metrics(observation: Mapping[str, object]) -> dict[str, float]:
         "factorization_retained_array_bytes": float(factorization_bytes),
         "unattributed_seconds": max(
             0.0,
-            wall_time - sum(float(value) for value in solve["stages_seconds"].values()),
+            wall_time - sum(float(value) for value in timings.values()),
         ),
     }
 
 
-def summarize_observations(
-    observations: Iterable[Mapping[str, object]],
+def summarize_outcomes(
+    outcomes: Iterable[Mapping[str, object]],
 ) -> list[dict[str, object]]:
-    """Derive timing summaries from repeated headline observations."""
-    grouped: dict[tuple[str, int], list[Mapping[str, object]]] = {}
-    for observation in observations:
-        if observation["kind"] != "measurement":
+    """Derive timing summaries from repeated successful measurements."""
+    grouped: dict[tuple[str, str, int], list[Mapping[str, object]]] = {}
+    for outcome in outcomes:
+        if outcome["kind"] != "measurement" or outcome["status"] != "success":
             continue
-        key = (str(observation["workload_id"]), int(observation["requested_threads"]))
-        grouped.setdefault(key, []).append(observation)
+        key = (
+            str(outcome["case_id"]),
+            str(outcome["workload_id"]),
+            int(outcome["requested_threads"]),
+        )
+        grouped.setdefault(key, []).append(outcome)
 
     summaries = []
-    for (workload_id, requested_threads), records in sorted(grouped.items()):
+    for (case_id, workload_id, requested_threads), records in sorted(grouped.items()):
         if len(records) < 3:
             continue
-        metrics = [observation_metrics(record) for record in records]
+        metrics = [outcome_metrics(record) for record in records]
         statistics = {
             name: _summary_statistics(record[name] for record in metrics)
             for name in metrics[0]
         }
+        timing_field = (
+            "stages_seconds"
+            if "stages_seconds" in records[0]["solve"]
+            else "timings_seconds"
+        )
         stage_statistics = {
             stage: _summary_statistics(
-                float(record["solve"]["stages_seconds"][stage]) for record in records
+                float(record["solve"][timing_field][stage]) for record in records
             )
-            for stage in records[0]["solve"]["stages_seconds"]
+            for stage in records[0]["solve"][timing_field]
         }
         summaries.append(
             {
+                "case_id": case_id,
                 "workload_id": workload_id,
                 "requested_threads": requested_threads,
                 "observation_count": len(records),
@@ -560,11 +759,20 @@ def _summary_statistics(values: Iterable[float]) -> dict[str, float]:
 def build_document(
     *,
     workloads: Iterable[Mapping[str, object]],
-    observations: Iterable[Mapping[str, object]],
+    outcomes: Iterable[Mapping[str, object]],
 ) -> dict[str, Any]:
     """Construct and check one current-checkout result document."""
     document = {
         "workloads": [dict(record) for record in workloads],
-        "observations": [dict(record) for record in observations],
+        "cases": _case_records(),
+        "outcomes": [dict(record) for record in outcomes],
     }
     return check_document(document)
+
+
+def _case_records() -> list[dict[str, object]]:
+    """Import and return frozen cases without loading them on the help path."""
+    # pylint: disable-next=import-outside-toplevel
+    from examples.many_group_performance.cases import case_records
+
+    return case_records()
