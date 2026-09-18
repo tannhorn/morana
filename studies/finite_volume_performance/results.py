@@ -46,6 +46,8 @@ _WORKLOAD_FIELDS = {
     "active_cells",
     "unknowns",
     "array_digests",
+    "material_family_digest",
+    "placement_digest",
 }
 _DIGEST_FIELDS = {"diffusion", "absorption", "scattering", "fission_transfer"}
 _OUTCOME_FIELDS = {
@@ -240,6 +242,10 @@ def _check_workload(value: object) -> tuple[str, dict[str, Any]]:
     for name, digest in digests.items():
         if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
             raise ValueError(f"array_digests.{name} must be a SHA-256 digest")
+    for field in ("material_family_digest", "placement_digest"):
+        digest = workload[field]
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise ValueError(f"workload.{field} must be a SHA-256 digest")
 
     return expected_id, workload
 

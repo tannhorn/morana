@@ -11,8 +11,8 @@ from studies.finite_volume_performance import workload
 from morana import (
     DirectLinearSolveSettings,
     FissionSourceNormalization,
-    FissionTransfer,
     PowerIterationSettings,
+    SeparableFission,
 )
 from morana.solvers.finite_volume import solve_keff
 
@@ -20,25 +20,27 @@ from morana.solvers.finite_volume import solve_keff
 def test_workload_matrix_has_expected_dimensions() -> None:
     """The group-major Cartesian matrix retains all twelve baseline cases."""
     assert workload.baseline_workloads() == (
-        (6, 5),
-        (6, 10),
-        (6, 20),
-        (18, 5),
-        (18, 10),
-        (18, 20),
-        (36, 5),
-        (36, 10),
-        (36, 20),
-        (72, 5),
-        (72, 10),
-        (72, 20),
+        (6, 6),
+        (6, 12),
+        (6, 24),
+        (18, 6),
+        (18, 12),
+        (18, 24),
+        (36, 6),
+        (36, 12),
+        (36, 24),
+        (72, 6),
+        (72, 12),
+        (72, 24),
     )
 
 
 def test_frozen_calibration_and_digest_coverage() -> None:
-    """The calibration scalar and digest coverage remain frozen."""
-    assert workload.CALIBRATION_SCALAR == 0.6020060777418164
+    """The calibration scalar, material arrays, and placement remain frozen."""
+    assert workload.CALIBRATION_SCALAR == 0.6004909682078956
     assert set(workload.FROZEN_ARRAY_DIGESTS) == set(workload.GROUP_COUNTS)
+    assert set(workload.FROZEN_MATERIAL_FAMILY_DIGESTS) == set(workload.GROUP_COUNTS)
+    assert set(workload.FROZEN_PLACEMENT_DIGESTS) == {2, 6, 12, 24}
 
 
 @pytest.mark.parametrize("groups", workload.GROUP_COUNTS)
@@ -63,12 +65,89 @@ def test_analytic_vectors_and_integrated_strengths(groups: int) -> None:
     )
     assert cross_sections.multiplicity_matrix is None
     assert cross_sections.fission is not None
-    assert isinstance(cross_sections.fission.neutron_production, FissionTransfer)
+    assert isinstance(cross_sections.fission.neutron_production, SeparableFission)
     np.testing.assert_allclose(
         cross_sections.fission.fission_production.mean(),
         workload.CALIBRATION_SCALAR * 5.15e-3,
         rtol=5.0e-16,
     )
+
+
+@pytest.mark.parametrize("groups", workload.GROUP_COUNTS)
+def test_role_named_synthetic_materials_have_bounded_spectral_contrasts(
+    groups: int,
+) -> None:
+    """Role labels select deterministic synthetic, rather than physical, data."""
+    reference = workload.build_cross_sections(groups)
+    leakage = workload.build_cross_sections(groups, workload.HIGH_LEAKAGE_MATERIAL)
+    high = workload.build_cross_sections(groups, workload.HIGH_REACTIVITY_MATERIAL)
+    removal = workload.build_cross_sections(groups, workload.FUEL_REMOVAL_MATERIAL)
+    absorber = workload.build_cross_sections(
+        groups, workload.LOCALIZED_ABSORBER_MATERIAL
+    )
+
+    assert reference.fission is not None
+    assert leakage.fission is not None
+    assert high.fission is not None
+    assert removal.fission is not None
+    assert absorber.fission is not None
+    np.testing.assert_allclose(
+        leakage.fission.fission_production,
+        reference.fission.fission_production,
+        rtol=5.0e-16,
+        atol=0.0,
+    )
+    assert np.all(
+        high.fission.fission_production > reference.fission.fission_production
+    )
+    assert np.all(
+        removal.fission.fission_production < reference.fission.fission_production
+    )
+    assert np.all(
+        absorber.fission.fission_production < reference.fission.fission_production
+    )
+    assert absorber.sigma_a[np.argmax(absorber.sigma_a / reference.sigma_a)] > (
+        reference.sigma_a[np.argmax(absorber.sigma_a / reference.sigma_a)]
+    )
+    assert np.all(high.D < reference.D)
+    assert np.all(removal.D > reference.D)
+    assert np.all(leakage.D > removal.D)
+    assert np.min(absorber.D / reference.D) < 0.89
+    fission_spectra = []
+    for cross_sections in (reference, leakage, high, removal, absorber):
+        assert cross_sections.fission is not None
+        fission_spectra.append(cross_sections.fission.neutron_production.chi)
+    assert len({workload.array_digest(spectrum) for spectrum in fission_spectra}) == 5
+
+
+@pytest.mark.parametrize("groups", workload.GROUP_COUNTS)
+def test_transfer_roles_span_weak_and_broad_synthetic_coupling(groups: int) -> None:
+    """Fuel removal and high reactivity retain distinct transfer topologies."""
+    reference = workload.build_cross_sections(groups).sigma_s
+    broad = workload.build_cross_sections(
+        groups, workload.HIGH_REACTIVITY_MATERIAL
+    ).sigma_s
+    weak = workload.build_cross_sections(groups, workload.FUEL_REMOVAL_MATERIAL).sigma_s
+
+    def direction_shares(matrix: np.ndarray) -> tuple[float, float, float]:
+        total = float(matrix.sum())
+        return (
+            float(np.triu(matrix, 1).sum() / total),
+            float(np.trace(matrix) / total),
+            float(np.tril(matrix, -1).sum() / total),
+        )
+
+    _, _, reference_up = direction_shares(reference)
+    broad_down, broad_diagonal, broad_up = direction_shares(broad)
+    weak_down, weak_diagonal, weak_up = direction_shares(weak)
+
+    assert broad_down > 0.39
+    assert broad_down > weak_down
+    assert broad_diagonal < 0.43
+    assert broad_up > 10.0 * reference_up
+    assert weak_down < 0.11
+    assert weak_diagonal > 0.87
+    assert weak_up < 0.016
 
 
 def test_scattering_support_weights_and_density_at_72_groups() -> None:
@@ -93,7 +172,7 @@ def test_scattering_support_weights_and_density_at_72_groups() -> None:
 
 
 def test_fission_transfer_support_shape_and_density_at_72_groups() -> None:
-    """The general transfer retains incident-dependent broad fast emission."""
+    """Each synthetic role retains a broad, normalized fast emission band."""
     groups = 72
     cross_sections = workload.build_cross_sections(groups)
     assert cross_sections.fission is not None
@@ -106,21 +185,25 @@ def test_fission_transfer_support_shape_and_density_at_72_groups() -> None:
     assert np.all(matrix[:, emission_groups:] == 0.0)
     first_spectrum = matrix[0] / matrix[0].sum()
     last_spectrum = matrix[-1] / matrix[-1].sum()
-    assert not np.array_equal(first_spectrum, last_spectrum)
+    np.testing.assert_allclose(first_spectrum, last_spectrum, rtol=5.0e-16)
 
 
 @pytest.mark.parametrize("groups", workload.GROUP_COUNTS)
 def test_frozen_array_digests(groups: int) -> None:
-    """Every final generated array matches its frozen digest."""
+    """Reference arrays and the full role-named family remain frozen."""
     assert (
         workload.generated_array_digests(groups)
         == workload.FROZEN_ARRAY_DIGESTS[groups]
     )
+    assert (
+        workload.generated_material_family_digest(groups)
+        == workload.FROZEN_MATERIAL_FAMILY_DIGESTS[groups]
+    )
 
 
-@pytest.mark.parametrize("axial_layers", (2, 5, 10, 20))
-def test_configuration_is_complete_homogeneous_geometry(axial_layers: int) -> None:
-    """The builder creates the specified complete vacuum mini-core."""
+@pytest.mark.parametrize("axial_layers", (2, 6, 12, 24))
+def test_configuration_is_complete_heterogeneous_geometry(axial_layers: int) -> None:
+    """The builder creates a complete, role-named vacuum mini-core."""
     configuration = workload.build_configuration(6, axial_layers)
     assert configuration.mesh.num_rings == 5
     assert configuration.mesh.n_cells == 61
@@ -131,7 +214,11 @@ def test_configuration_is_complete_homogeneous_geometry(axial_layers: int) -> No
         configuration.material_mesh.n_active_cells(index) == 61
         for index in range(axial_layers)
     )
-    assert len(configuration.materials) == 1
+    assert set(configuration.materials) == set(workload.SYNTHETIC_MATERIAL_NAMES)
+    assert (
+        workload.generated_placement_digest(axial_layers)
+        == workload.FROZEN_PLACEMENT_DIGESTS[axial_layers]
+    )
     assert configuration.source is None
     configuration.check_boundary_coverage()
     configuration.check_no_unused_materials()
@@ -158,8 +245,7 @@ def test_smoke_workload_solves_with_frozen_numerical_controls() -> None:
         FissionSourceNormalization(rate=1.0),
         workload.solve_settings(),
     )
-    assert result.keff == pytest.approx(1.001_363_867_359_448_3, rel=1.0e-12)
-    assert result.execution_report.iterations == 66
+    assert result.keff == pytest.approx(1.039_943_512_290_362, rel=1.0e-12)
     assert (
         result.execution_report.final_outer_iteration.keff_relative_residual
         <= result.solve_settings.keff_relative_residual_tolerance

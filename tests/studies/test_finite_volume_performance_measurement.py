@@ -16,6 +16,7 @@ from studies.finite_volume_performance import (
     orchestration,
     results,
     runner,
+    workload,
 )
 from studies.finite_volume_performance.cases import (
     DIRECT_CASE_ID,
@@ -144,9 +145,9 @@ def test_direct_measurement_records_thread_context_and_checked_stages(
     assert set(solve["rss_checkpoints_bytes"]) == set(results.RSS_CHECKPOINT_NAMES)
     assert solve["factorization"]["lower"]["stored_nonzeros"] > 0
     assert solve["factorization"]["upper"]["stored_nonzeros"] > 0
-    assert solve["outer_iterations"] == 66
+    assert solve["outer_iterations"] == 187
     assert solve["numerical_checks"]["keff"] == pytest.approx(
-        1.001_363_867_359_448_3, rel=1.0e-12
+        1.039_943_512_290_362, rel=1.0e-12
     )
 
 
@@ -191,6 +192,12 @@ def test_checked_document_round_trip_is_deterministic(
     assert first.read_bytes() == second.read_bytes()
     assert results.read_document(first) == document
     assert json.loads(first.read_text(encoding="utf-8"))["cases"] == records()
+    workload_record = document["workloads"][0]
+    assert (
+        workload_record["material_family_digest"]
+        == workload.FROZEN_MATERIAL_FAMILY_DIGESTS[6]
+    )
+    assert workload_record["placement_digest"] == workload.FROZEN_PLACEMENT_DIGESTS[2]
 
 
 def test_checked_document_rejects_broken_record_relationships(
@@ -291,10 +298,10 @@ def test_baseline_resume_runs_only_missing_endpoint_after_smaller_warmup() -> No
     completed = [
         {"outcome_id": runner._request_id(request), "status": "success"}
         for request in baseline
-        if request.record and (request.groups, request.axial_layers) != (72, 20)
+        if request.record and (request.groups, request.axial_layers) != (72, 24)
     ]
     resumed = runner._pending_requests(baseline, completed)
-    assert resumed[0] == runner.WorkerRequest(72, 5, DIRECT_CASE_ID, record=False)
+    assert resumed[0] == runner.WorkerRequest(72, 6, DIRECT_CASE_ID, record=False)
     assert [(request.kind, request.repetition) for request in resumed[1:]] == [
         ("measurement", 0),
         ("measurement", 1),

@@ -123,7 +123,21 @@ python -m studies.finite_volume_performance baseline --solver gmres_jacobi
 
 The workflow writes checked, machine-specific results below
 `artifacts/studies/finite_volume_performance/`. These ignored records are local
-development evidence rather than package data.
+development evidence rather than package data. Its heterogeneous role materials 
+are deterministic synthetic formulas over an abstract fast-to-thermal 
+group coordinate. They are workload contrasts spanning diffusion, loss, transfer, 
+production, and fast-emission structure; they are not evaluated or 
+condensed cross sections.
+
+Review every role material together in groupwise and transfer-matrix plots
+with:
+
+```bash
+python -m studies.finite_volume_performance.plot_cross_sections
+```
+
+Use `--groups` to select supported group counts. The command writes PNG files
+below `artifacts/studies/finite_volume_performance/cross_sections/` by default.
 
 Computationally expensive staged workflows, such as the OpenMC comparison,
 document their own reproduction commands and are run separately when in scope.

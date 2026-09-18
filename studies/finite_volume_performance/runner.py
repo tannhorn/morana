@@ -22,8 +22,8 @@ from studies.finite_volume_performance.results import (
 )
 
 DEFAULT_OUTPUT_DIR = Path("artifacts/studies/finite_volume_performance")
-_BASELINE_ENDPOINT = (72, 20)
-_BASELINE_ENDPOINT_WARMUP = (72, 5)
+_BASELINE_ENDPOINT = (72, 24)
+_BASELINE_ENDPOINT_WARMUP = (72, 6)
 
 
 @dataclass(frozen=True)

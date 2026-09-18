@@ -3,12 +3,13 @@
 This module owns the scientific workload definition only.  It deliberately
 does not measure time or memory and does not import external data.  The
 cross sections are deterministic synthetic values intended to exercise
-Morana's many-group transfer assembly; they are not evaluated nuclear data or
-a reactor-design model.
+Morana's many-group transfer assembly; they are not evaluated or
+condensed nuclear data.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from hashlib import sha256
 from math import ceil
 from types import MappingProxyType
@@ -21,7 +22,6 @@ from morana import (
     CrossSections,
     DirectLinearSolveSettings,
     FissionData,
-    FissionTransfer,
     HexPlanarMesh,
     KeffSettings,
     Material,
@@ -29,17 +29,66 @@ from morana import (
     MaterialSlice,
     PowerIterationSettings,
     ProblemConfiguration,
+    SeparableFission,
 )
 
 GROUP_COUNTS = (6, 18, 36, 72)
-BASELINE_AXIAL_LAYER_COUNTS = (5, 10, 20)
+BASELINE_AXIAL_LAYER_COUNTS = (6, 12, 24)
 SMOKE_AXIAL_LAYER_COUNT = 2
 NUM_PLANAR_RINGS = 5
 LATTICE_PITCH_CM = 11.0 * 2.54
 ACTIVE_HEIGHT_CM = 72.0 * 2.54
-_MATERIAL_NAME = "synthetic_many_group_material"
+REFERENCE_MATERIAL = "reference"
+HIGH_LEAKAGE_MATERIAL = "high_leakage"
+HIGH_REACTIVITY_MATERIAL = "high_reactivity"
+FUEL_REMOVAL_MATERIAL = "fuel_removal"
+LOCALIZED_ABSORBER_MATERIAL = "localized_absorber"
+SYNTHETIC_MATERIAL_NAMES = (
+    REFERENCE_MATERIAL,
+    HIGH_LEAKAGE_MATERIAL,
+    HIGH_REACTIVITY_MATERIAL,
+    FUEL_REMOVAL_MATERIAL,
+    LOCALIZED_ABSORBER_MATERIAL,
+)
 
-CALIBRATION_SCALAR = 0.6020060777418164
+CALIBRATION_SCALAR = 0.6004909682078956
+
+
+@dataclass(frozen=True)
+class _ScatteringKernel:
+    """Smooth compact-transfer controls for one synthetic material role."""
+
+    diagonal_weight: float
+    downscatter_profile: tuple[float, float, float]
+    upscatter_profile: tuple[float, float, float]
+    directional_fractions: tuple[float, float, float] | None = None
+
+
+@dataclass(frozen=True)
+class _FissionEmission:
+    """Fast-emission shape controls for one synthetic material role."""
+
+    center: float
+    width: float
+
+
+_REFERENCE_TRANSFER = _ScatteringKernel(
+    diagonal_weight=1.0,
+    downscatter_profile=(0.25, 0.08, 1.0),
+    upscatter_profile=(0.05, 0.04, 0.05),
+)
+_BROAD_TRANSFER = _ScatteringKernel(
+    diagonal_weight=4.0,
+    downscatter_profile=(0.42, 0.12, 0.8),
+    upscatter_profile=(0.25, 0.10, 0.35),
+    directional_fractions=(0.30, 0.50, 0.20),
+)
+_WEAK_TRANSFER = _ScatteringKernel(
+    diagonal_weight=10.0,
+    downscatter_profile=(0.10, 0.05, 1.0),
+    upscatter_profile=(0.04, 0.02, 0.015),
+    directional_fractions=(0.875, 0.11, 0.015),
+)
 
 FROZEN_ARRAY_DIGESTS = MappingProxyType(
     {
@@ -52,10 +101,10 @@ FROZEN_ARRAY_DIGESTS = MappingProxyType(
                     "9fb78dbe7839cbeece42a93b87d4e7a69f5d95a528003aefc6f5f090f7c8c991"
                 ),
                 "scattering": (
-                    "103bf9fef1a8cbd0706c1a0b3e5303d8deedb059a1b6346fb5e9da003ba88aad"
+                    "7539dfb1eb81de713b0f83c7365d58b7c8eeb228a94f6187f191a16ccb5ccdd8"
                 ),
                 "fission_transfer": (
-                    "b34b4e218f1f41b8d5f5bb3f240a65d55b6ce4cabe6074c3388f21a755f3b467"
+                    "297a6de80876c6d63994e95d17aca61895a249a05c5d91dca9e1a8967566bf25"
                 ),
             }
         ),
@@ -68,10 +117,10 @@ FROZEN_ARRAY_DIGESTS = MappingProxyType(
                     "970a42cb87f564280af24af881cb793b1190aa8a6d7e7ff710cb4588c1732e84"
                 ),
                 "scattering": (
-                    "65d86a34ec58f5100fc1c8aa773ab0a23e8ad7a58054cb65a7c812cec9bec95e"
+                    "7f52b991317c172e476fc595a594af7cf2a9883caef299a13c3efc91508b20f3"
                 ),
                 "fission_transfer": (
-                    "5b0ecc2b0141db1f3320360e5bc35e1f6dd2388a2e578a37427e079ca632539d"
+                    "ceed187dc50d7e5dd856d3b0ec4ea4705fe40ff8ace1000c13965e91ebcf454f"
                 ),
             }
         ),
@@ -84,10 +133,10 @@ FROZEN_ARRAY_DIGESTS = MappingProxyType(
                     "f0d624e4d6974dabda5a7b527a8fcd23c152707e74ea297bd8d89764026a6330"
                 ),
                 "scattering": (
-                    "fd78b58d32fdb54a00904d540343b7457566dff6d75080c4585ba528c16531dd"
+                    "b913fe19f7da17754c9607725992fe7672c55b1d6eeda9e3e770b5f1ecb7f8c7"
                 ),
                 "fission_transfer": (
-                    "a5b9fc2e6badfd5a5588aaeb7a5221c3ddb22f0d509b4e7c88006f9806787794"
+                    "9d97fd8cded237faf101e0218d141e753ab6faf085f2581a13448a40152781a3"
                 ),
             }
         ),
@@ -100,13 +149,30 @@ FROZEN_ARRAY_DIGESTS = MappingProxyType(
                     "8be238b1be457ca54d196e98fa37038bf3cac88dff873bae473819dbf435e1f7"
                 ),
                 "scattering": (
-                    "e7dfd3b8d53cb97af456b38c43ae41275cbb77cde72d2ec9c3f322202ae03df2"
+                    "c387d1268f152f66afd63bfc5e789982acadf704e95939fbca0024863da201fb"
                 ),
                 "fission_transfer": (
-                    "e2db2b66fcfba820a85875b37dd6720a9cba6a0016bd89cf41bd308368ab7246"
+                    "c3bb5ae87ed506783e8085ad8ef7b77443504a97d834129174c6b8447a08f3ff"
                 ),
             }
         ),
+    }
+)
+
+FROZEN_MATERIAL_FAMILY_DIGESTS = MappingProxyType(
+    {
+        6: "bc189ad5594e0e45c003f38256279c8c281d60f429d7225ea449a8c72a510b5d",
+        18: "be4c4b8ed013661b96a60074f95c5a1e4f2c8b136b3211f6644a4ee3db9269f5",
+        36: "ebb905e41caadc5dae0c460670fe67217bf93405b1b9b4dd674292766a6d99e2",
+        72: "e934ee202f1c83e848c3a905bd6b1162cae47ce8909e6a37cb8dba076ce9adfd",
+    }
+)
+FROZEN_PLACEMENT_DIGESTS = MappingProxyType(
+    {
+        2: "0004af9104a8f039ab239d49391ff0b88ec6365ecbd5fc0cea3bc388b7767aa1",
+        6: "701d6291526904e5cd709fde0e281769af84dd4cfd4cf869079610be13a10773",
+        12: "e34fdaa24ec9821b938b03a25e121fb1d791e5242526327cb4f4bd6a79eccd55",
+        24: "b209b42df18f86bae8f55bf7ccdcc1720c8ac2ff70c943f6745fc1465e0369bd",
     }
 )
 
@@ -130,97 +196,250 @@ def _require_axial_layers(axial_layers: int) -> int:
     return axial_layers
 
 
-def _synthetic_arrays(
-    groups: int,
-    *,
-    fission_scale: float,
-) -> dict[str, np.ndarray]:
-    """Construct the analytic synthetic arrays for one group count."""
+def _material_modifiers(group_positions: np.ndarray, material_name: str) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    _ScatteringKernel,
+    _FissionEmission,
+]:
+    """Return smooth synthetic material and transfer modifiers."""
+    groups = len(group_positions)
+    resonance_low = np.exp(-(((group_positions - 0.42) / 0.07) ** 2))
+    resonance_high = np.exp(-(((group_positions - 0.63) / 0.08) ** 2))
+    epithermal = np.exp(-(((group_positions - 0.43) / 0.29) ** 2))
+    thermal = group_positions**1.4
+    absorption_modifier = np.ones(groups, dtype=np.float64)
+    diffusion_modifier = np.ones(groups, dtype=np.float64)
+    scattering_row_modifier = np.ones(groups, dtype=np.float64)
+    fission_modifier = np.ones(groups, dtype=np.float64)
+    absorption_increment = np.zeros(groups, dtype=np.float64)
+    scattering_kernel = _REFERENCE_TRANSFER
+    fission_emission = _FissionEmission(center=0.12, width=0.14)
+    if material_name == HIGH_LEAKAGE_MATERIAL:
+        diffusion_modifier += 0.30 + 0.15 * (1.0 - group_positions)
+        fission_emission = _FissionEmission(center=0.19, width=0.12)
+    elif material_name == HIGH_REACTIVITY_MATERIAL:
+        absorption_modifier += 0.11 + 0.09 * epithermal + 0.05 * thermal
+        fission_modifier += 0.20 + 0.38 * epithermal + 0.14 * thermal
+        diffusion_modifier -= 0.20 - 0.08 * group_positions
+        scattering_row_modifier += 0.15 + 0.07 * thermal
+        scattering_kernel = _BROAD_TRANSFER
+        fission_emission = _FissionEmission(center=0.16, width=0.16)
+    elif material_name == FUEL_REMOVAL_MATERIAL:
+        absorption_modifier -= 0.05 + 0.11 * (1.0 - thermal)
+        fission_modifier -= 0.22 + 0.20 * epithermal + 0.12 * (1.0 - thermal)
+        diffusion_modifier += 0.16 + 0.22 * (1.0 - group_positions)
+        scattering_row_modifier -= 0.22 + 0.08 * (1.0 - thermal)
+        scattering_kernel = _WEAK_TRANSFER
+        fission_emission = _FissionEmission(center=0.075, width=0.09)
+    elif material_name == LOCALIZED_ABSORBER_MATERIAL:
+        absorption_modifier -= 0.03 + 0.08 * (1.0 - thermal)
+        absorption_increment = 0.008 * resonance_low + 0.005 * resonance_high
+        fission_modifier -= 0.10 + 0.08 * epithermal + 0.05 * thermal
+        diffusion_modifier -= 0.12 * resonance_low + 0.08 * resonance_high
+        scattering_row_modifier += 0.003 * resonance_low
+        fission_emission = _FissionEmission(center=0.11, width=0.11)
+    return (
+        absorption_modifier,
+        absorption_increment,
+        diffusion_modifier,
+        scattering_row_modifier,
+        fission_modifier,
+        scattering_kernel,
+        fission_emission,
+    )
+
+
+def _scattering_row(
+    groups: int, incident_group: int, kernel: _ScatteringKernel
+) -> np.ndarray:
+    """Construct one normalized smooth transfer row for a synthetic role."""
+    row = np.zeros(groups, dtype=np.float64)
+    row[incident_group] = kernel.diagonal_weight
+    downscatter_width, downscatter_scale, downscatter_weight = (
+        kernel.downscatter_profile
+    )
+    downscatter_indices = tuple(
+        outgoing_group
+        for offset in range(1, ceil(groups * downscatter_width) + 1)
+        if (outgoing_group := incident_group + offset) < groups
+    )
+    for outgoing_group in downscatter_indices:
+        row[outgoing_group] = downscatter_weight * np.exp(
+            -(outgoing_group - incident_group) / max(1.0, groups * downscatter_scale)
+        )
+    upscatter_width, upscatter_scale, upscatter_weight = kernel.upscatter_profile
+    upscatter_indices = tuple(
+        outgoing_group
+        for offset in range(1, ceil(groups * upscatter_width) + 1)
+        if (outgoing_group := incident_group - offset) >= 0
+    )
+    for outgoing_group in upscatter_indices:
+        row[outgoing_group] = upscatter_weight * np.exp(
+            -(incident_group - outgoing_group) / max(1.0, groups * upscatter_scale)
+        )
+    if kernel.directional_fractions is None:
+        return row / row.sum()
+    diagonal_fraction, downscatter_fraction, upscatter_fraction = (
+        kernel.directional_fractions
+    )
+    row[incident_group] = diagonal_fraction
+    if downscatter_indices:
+        downscatter_values = row[list(downscatter_indices)]
+        row[list(downscatter_indices)] = (
+            downscatter_fraction * downscatter_values / downscatter_values.sum()
+        )
+    else:
+        row[incident_group] += downscatter_fraction
+    if upscatter_indices:
+        upscatter_values = row[list(upscatter_indices)]
+        row[list(upscatter_indices)] = (
+            upscatter_fraction * upscatter_values / upscatter_values.sum()
+        )
+    else:
+        row[incident_group] += upscatter_fraction
+    return row
+
+
+def _synthetic_arrays(groups: int, material_name: str) -> dict[str, np.ndarray]:
+    """Construct one role-based synthetic material without external data.
+
+    The normalized coordinate runs fast to thermal.  The material labels name
+    workload roles, not substances: the formulas are deliberately synthetic
+    smooth perturbations selected to exercise heterogeneous loss, transfer,
+    and fission blocks.  They are not evaluated or condensed cross sections.
+    """
     groups = _require_group_count(groups)
+    if material_name not in SYNTHETIC_MATERIAL_NAMES:
+        raise ValueError(f"material_name must be one of {SYNTHETIC_MATERIAL_NAMES}")
     group_positions = (np.arange(groups, dtype=np.float64) + 0.5) / groups
 
     diffusion = 1.4 - 0.6 * group_positions
     absorption = 5.0e-4 + 9.5e-3 * group_positions**3
 
+    (
+        absorption_modifier,
+        absorption_increment,
+        diffusion_modifier,
+        scattering_row_modifier,
+        fission_modifier,
+        scattering_kernel,
+        fission_emission,
+    ) = _material_modifiers(group_positions, material_name)
+
+    diffusion *= diffusion_modifier
+    absorption = absorption * absorption_modifier + absorption_increment
+
     scattering = np.zeros((groups, groups), dtype=np.float64)
-    downscatter_width = ceil(groups / 4)
-    upscatter_width = ceil(groups / 20)
-    downscatter_scale = max(1.0, 0.08 * groups)
-    upscatter_scale = max(1.0, 0.04 * groups)
     for incident_group, position in enumerate(group_positions):
-        scattering[incident_group, incident_group] = 1.0
-        for offset in range(1, downscatter_width + 1):
-            outgoing_group = incident_group + offset
-            if outgoing_group < groups:
-                scattering[incident_group, outgoing_group] = np.exp(
-                    -offset / downscatter_scale
-                )
-        for offset in range(1, upscatter_width + 1):
-            outgoing_group = incident_group - offset
-            if outgoing_group >= 0:
-                scattering[incident_group, outgoing_group] = 0.05 * np.exp(
-                    -offset / upscatter_scale
-                )
-        scattering[incident_group] *= (0.08 + 0.04 * position) / scattering[
-            incident_group
-        ].sum()
+        scattering[incident_group] = (
+            _scattering_row(groups, incident_group, scattering_kernel)
+            * (0.08 + 0.04 * position)
+            * scattering_row_modifier[incident_group]
+        )
 
     fission_production = 2.0e-4 + 1.98e-2 * group_positions**3
-    fission_production *= 5.15e-3 / fission_production.mean()
+    fission_production *= CALIBRATION_SCALAR * 5.15e-3 / fission_production.mean()
+    fission_production *= fission_modifier
     emission_groups = ceil(0.30 * groups)
-    fission_transfer = np.zeros((groups, groups), dtype=np.float64)
     outgoing_positions = group_positions[:emission_groups]
-    for incident_group, position in enumerate(group_positions):
-        weights = np.exp(
-            -(((outgoing_positions - (0.08 + 0.08 * position)) / 0.14) ** 2)
+    emission_weights = np.exp(
+        -(
+            ((outgoing_positions - fission_emission.center) / fission_emission.width)
+            ** 2
         )
-        fission_transfer[incident_group, :emission_groups] = (
-            fission_scale * fission_production[incident_group] * weights / weights.sum()
-        )
+    )
+    emission = np.zeros(groups, dtype=np.float64)
+    emission[:emission_groups] = emission_weights / emission_weights.sum()
 
     return {
         "diffusion": diffusion,
         "absorption": absorption,
         "scattering": scattering,
-        "fission_transfer": fission_transfer,
+        "fission_production": fission_production,
+        "fission_emission": emission,
     }
 
 
-def build_cross_sections(groups: int) -> CrossSections:
-    """Return checked synthetic cross sections for a frozen group count."""
-    arrays = _synthetic_arrays(groups, fission_scale=CALIBRATION_SCALAR)
+def build_cross_sections(
+    groups: int, material_name: str = REFERENCE_MATERIAL
+) -> CrossSections:
+    """Return one checked, role-named synthetic cross-section set.
+
+    Parameters are deliberately limited to the frozen study group counts and
+    material roles.  This is a performance-workload generator, not a material
+    model or a pathway for importing transport data.
+    """
+    arrays = _synthetic_arrays(groups, material_name)
     return CrossSections(
         D=arrays["diffusion"],
         sigma_a=arrays["absorption"],
         sigma_s=arrays["scattering"],
         multiplicity_matrix=None,
         fission=FissionData(
-            neutron_production=FissionTransfer(arrays["fission_transfer"])
+            neutron_production=SeparableFission(
+                arrays["fission_production"], arrays["fission_emission"]
+            )
         ),
     )
 
 
+def _layer_roles(layer_index: int) -> tuple[str, ...]:
+    """Return the outer-to-inner synthetic role pattern for one axial layer."""
+    patterns = (
+        (
+            HIGH_LEAKAGE_MATERIAL,
+            REFERENCE_MATERIAL,
+            HIGH_REACTIVITY_MATERIAL,
+            REFERENCE_MATERIAL,
+            LOCALIZED_ABSORBER_MATERIAL,
+        ),
+        (
+            HIGH_REACTIVITY_MATERIAL,
+            REFERENCE_MATERIAL,
+            HIGH_LEAKAGE_MATERIAL,
+            FUEL_REMOVAL_MATERIAL,
+            REFERENCE_MATERIAL,
+        ),
+    )
+    return patterns[layer_index % len(patterns)]
+
+
 def build_configuration(groups: int, axial_layers: int) -> ProblemConfiguration:
-    """Build one homogeneous 61-cell layered synthetic criticality problem."""
+    """Build one heterogeneous, role-named synthetic criticality problem."""
     groups = _require_group_count(groups)
     axial_layers = _require_axial_layers(axial_layers)
     mesh = HexPlanarMesh(num_rings=NUM_PLANAR_RINGS, pitch=LATTICE_PITCH_CM)
-    material = Material(_MATERIAL_NAME, xs=build_cross_sections(groups))
-    layer = MaterialSlice(
-        mesh,
-        {index: _MATERIAL_NAME for index in mesh.openmc_indices},
-        ACTIVE_HEIGHT_CM / axial_layers,
+    materials = {
+        material_name: Material(
+            material_name, xs=build_cross_sections(groups, material_name)
+        )
+        for material_name in SYNTHETIC_MATERIAL_NAMES
+    }
+    layers = tuple(
+        MaterialSlice.from_openmc_rings(
+            mesh,
+            [
+                [material_name] * max(6 * (mesh.num_rings - 1 - ring), 1)
+                for ring, material_name in enumerate(_layer_roles(layer_index))
+            ],
+            height=ACTIVE_HEIGHT_CM / axial_layers,
+        )
+        for layer_index in range(axial_layers)
     )
     return ProblemConfiguration(
         mesh=mesh,
-        materials={_MATERIAL_NAME: material},
-        material_mesh=MaterialMesh.stack(layer.extrude(count=axial_layers)),
+        materials=materials,
+        material_mesh=MaterialMesh.stack(layers),
         boundary=BoundaryConditionSet(
             BoundaryCondition.vacuum().on_radial(),
             BoundaryCondition.vacuum().on_bottom(),
             BoundaryCondition.vacuum().on_top(),
         ),
-        name=f"synthetic_many_group_g{groups}_z{axial_layers}",
+        name=f"synthetic_heterogeneous_many_group_g{groups}_z{axial_layers}",
     )
 
 
@@ -260,9 +479,11 @@ def array_digest(array: np.ndarray) -> str:
     return digest.hexdigest()
 
 
-def generated_array_digests(groups: int) -> dict[str, str]:
-    """Return deterministic digests for the final checked workload arrays."""
-    cross_sections = build_cross_sections(groups)
+def generated_array_digests(
+    groups: int, material_name: str = REFERENCE_MATERIAL
+) -> dict[str, str]:
+    """Return deterministic digests for one checked synthetic material."""
+    cross_sections = build_cross_sections(groups, material_name)
     if cross_sections.fission is None:  # pragma: no cover - construction invariant
         raise RuntimeError("synthetic cross sections unexpectedly lack fission data")
     return {
@@ -271,3 +492,29 @@ def generated_array_digests(groups: int) -> dict[str, str]:
         "scattering": array_digest(cross_sections.sigma_s),
         "fission_transfer": array_digest(cross_sections.fission.fission_transfer),
     }
+
+
+def generated_material_family_digest(groups: int) -> str:
+    """Return one deterministic digest covering every synthetic material array."""
+    digest = sha256()
+    for material_name in SYNTHETIC_MATERIAL_NAMES:
+        digest.update(material_name.encode("ascii"))
+        for component, value in generated_array_digests(groups, material_name).items():
+            digest.update(component.encode("ascii"))
+            digest.update(value.encode("ascii"))
+    return digest.hexdigest()
+
+
+def generated_placement_digest(axial_layers: int) -> str:
+    """Return one deterministic digest of the role placement at every cell."""
+    configuration = build_configuration(6, axial_layers)
+    digest = sha256()
+    for axial_index in range(axial_layers):
+        for openmc_index in configuration.mesh.openmc_indices:
+            digest.update(
+                configuration.material_mesh.key_at(axial_index, openmc_index).encode(
+                    "ascii"
+                )
+            )
+            digest.update(b"\0")
+    return digest.hexdigest()

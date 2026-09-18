@@ -34,6 +34,8 @@ from studies.finite_volume_performance.orchestration import (
 from studies.finite_volume_performance.results import STAGE_NAMES
 from studies.finite_volume_performance.workload import (
     FROZEN_ARRAY_DIGESTS,
+    FROZEN_MATERIAL_FAMILY_DIGESTS,
+    FROZEN_PLACEMENT_DIGESTS,
     build_configuration,
     solve_settings,
 )
@@ -556,4 +558,6 @@ def workload_record(groups: int, axial_layers: int) -> dict[str, object]:
         "active_cells": cells,
         "unknowns": cells * groups,
         "array_digests": dict(FROZEN_ARRAY_DIGESTS[groups]),
+        "material_family_digest": FROZEN_MATERIAL_FAMILY_DIGESTS[groups],
+        "placement_digest": FROZEN_PLACEMENT_DIGESTS[axial_layers],
     }
