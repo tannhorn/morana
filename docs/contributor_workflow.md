@@ -106,38 +106,13 @@ The `studies/` tree contains maintained computational investigations used to
 inform Morana development. These workflows answer bounded design or
 implementation questions; they are not user examples, routine tests,
 numerical-verification claims, recognized reference problems, or portable
-performance guarantees. Run a study explicitly when it is in scope; the
-finite-volume many-group smoke workflow is:
+performance guarantees. Run a study explicitly only when it is in scope.
 
-```bash
-python -m studies.finite_volume_performance
-```
-
-Its long-running direct-reference and GMRES/Jacobi performance studies are
-explicit:
-
-```bash
-python -m studies.finite_volume_performance baseline
-python -m studies.finite_volume_performance baseline --solver gmres_jacobi
-```
-
-The workflow writes checked, machine-specific results below
-`artifacts/studies/finite_volume_performance/`. These ignored records are local
-development evidence rather than package data. Its heterogeneous role materials 
-are deterministic synthetic formulas over an abstract fast-to-thermal 
-group coordinate. They are workload contrasts spanning diffusion, loss, transfer, 
-production, and fast-emission structure; they are not evaluated or 
-condensed cross sections.
-
-Review every role material together in groupwise and transfer-matrix plots
-with:
-
-```bash
-python -m studies.finite_volume_performance.plot_cross_sections
-```
-
-Use `--groups` to select supported group counts. The command writes PNG files
-below `artifacts/studies/finite_volume_performance/cross_sections/` by default.
+Each maintained study owns its operating instructions and artifact guidance on
+its directory README. See the
+[finite-volume performance study README](https://github.com/tannhorn/morana/blob/main/studies/finite_volume_performance/README.md)
+for the current many-group smoke, baseline, selected-workload, and plotting
+commands.
 
 Computationally expensive staged workflows, such as the OpenMC comparison,
 document their own reproduction commands and are run separately when in scope.

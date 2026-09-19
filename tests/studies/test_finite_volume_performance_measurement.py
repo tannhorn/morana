@@ -288,12 +288,63 @@ def test_study_modes_and_cases_are_exact() -> None:
     assert gmres.output_name == "baseline_gmres_jacobi.json"
     assert len(direct.requests) == len(gmres.requests) == 60
     assert {request.requested_threads for request in gmres.requests} == {1}
+    expected_warmup = runner.WorkerRequest(6, 2, DIRECT_CASE_ID, record=False)
+    assert direct.requests[::5] == (expected_warmup,) * 12
     with pytest.raises(ValueError, match="one of"):
         runner._plan("baseline", "gmres_ilu")
 
 
-def test_baseline_resume_runs_only_missing_endpoint_after_smaller_warmup() -> None:
-    """A partial baseline resumes its endpoint without replaying the matrix."""
+def test_selected_protocol_accepts_reusable_workload_and_warmup_inputs() -> None:
+    """Selected runs reuse one protocol rather than adding assessment modes."""
+    plan = runner._plan(
+        "selected",
+        workloads=((18, 6), (36, 12)),
+        warmup=(6, 2),
+        output_name="selected_direct.json",
+    )
+    assert plan.output_name == "selected_direct.json"
+    assert plan.requests == (
+        runner.WorkerRequest(6, 2, DIRECT_CASE_ID, record=False),
+        runner.WorkerRequest(18, 6, DIRECT_CASE_ID),
+        runner.WorkerRequest(6, 2, DIRECT_CASE_ID, record=False),
+        runner.WorkerRequest(36, 12, DIRECT_CASE_ID),
+    )
+    assert [item["workload_id"] for item in runner._workloads(plan.requests)] == [
+        "g6-z2",
+        "g18-z6",
+        "g36-z12",
+    ]
+
+    iterative = runner._plan(
+        "selected",
+        GMRES_JACOBI_CASE_ID,
+        workloads=((18, 12),),
+        warmup=(6, 2),
+        output_name="selected_iterative.json",
+    )
+    assert iterative.output_name == "selected_iterative.json"
+    assert iterative.requests == (
+        runner.WorkerRequest(6, 2, GMRES_JACOBI_CASE_ID, record=False),
+        runner.WorkerRequest(18, 12, GMRES_JACOBI_CASE_ID),
+    )
+    with pytest.raises(ValueError, match="at least one workload"):
+        runner._plan("selected", output_name="empty.json")
+    with pytest.raises(ValueError, match="output name"):
+        runner._plan("selected", workloads=((6, 2),))
+    with pytest.raises(ValueError, match="groups must be"):
+        runner._plan("selected", workloads=((7, 2),), output_name="invalid.json")
+    with pytest.raises(ValueError, match="layers must be positive"):
+        runner._plan("selected", workloads=((6, 0),), output_name="invalid.json")
+    with pytest.raises(ValueError, match="must be unique"):
+        runner._plan(
+            "selected",
+            workloads=((6, 2), (6, 2)),
+            output_name="duplicate.json",
+        )
+
+
+def test_baseline_resume_runs_only_missing_endpoint_after_cheap_warmup() -> None:
+    """A partial baseline resumes its endpoint after the uniform cheap warm-up."""
     baseline = runner._plan("baseline").requests
     completed = [
         {"outcome_id": runner._request_id(request), "status": "success"}
@@ -301,7 +352,7 @@ def test_baseline_resume_runs_only_missing_endpoint_after_smaller_warmup() -> No
         if request.record and (request.groups, request.axial_layers) != (72, 24)
     ]
     resumed = runner._pending_requests(baseline, completed)
-    assert resumed[0] == runner.WorkerRequest(72, 6, DIRECT_CASE_ID, record=False)
+    assert resumed[0] == runner.WorkerRequest(6, 2, DIRECT_CASE_ID, record=False)
     assert [(request.kind, request.repetition) for request in resumed[1:]] == [
         ("measurement", 0),
         ("measurement", 1),

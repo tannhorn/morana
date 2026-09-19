@@ -62,7 +62,7 @@ solver-policy surface.
 
 The repository retains the deterministic workload builder, checked result
 reader, and controlled one-thread smoke and baseline workflows under
-`studies/finite_volume_performance/`. The
-[contributor workflow](../contributor_workflow.md#maintained-development-studies)
-owns the current commands and artifact-location guidance. Raw, machine-specific
-study records remain local rather than becoming package data.
+`studies/finite_volume_performance/`. Its
+[README](https://github.com/tannhorn/morana/blob/main/studies/finite_volume_performance/README.md)
+owns the current commands and artifact-location guidance. Raw,
+machine-specific study records remain local rather than becoming package data.

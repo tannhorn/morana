@@ -22,8 +22,7 @@ from studies.finite_volume_performance.results import (
 )
 
 DEFAULT_OUTPUT_DIR = Path("artifacts/studies/finite_volume_performance")
-_BASELINE_ENDPOINT = (72, 24)
-_BASELINE_ENDPOINT_WARMUP = (72, 6)
+_BASELINE_WARMUP = (6, 2)
 
 
 @dataclass(frozen=True)
@@ -111,31 +110,58 @@ def _baseline_requests(case_id: str) -> tuple[WorkerRequest, ...]:
 
     requests = []
     for groups, layers in baseline_workloads():
-        if (groups, layers) == _BASELINE_ENDPOINT:
-            requests.append(
-                WorkerRequest(
-                    *_BASELINE_ENDPOINT_WARMUP,
-                    case_id,
-                    record=False,
-                )
-            )
+        requests.append(WorkerRequest(*_BASELINE_WARMUP, case_id, record=False))
         requests.extend(
             _cell_requests(
                 groups,
                 layers,
                 case_id,
-                warmup=(groups, layers) != _BASELINE_ENDPOINT,
+                warmup=False,
                 profile=True,
             )
         )
     return tuple(requests)
 
 
-def _plan(mode: str, solver_case: str | None = None) -> RunPlan:
+def _selected_requests(
+    workloads: tuple[tuple[int, int], ...],
+    case_id: str,
+    warmup: tuple[int, int] | None,
+) -> tuple[WorkerRequest, ...]:
+    """Return one recorded worker per selected workload, with optional warm-ups."""
+    # pylint: disable-next=import-outside-toplevel
+    from studies.finite_volume_performance.workload import GROUP_COUNTS
+
+    if len(set(workloads)) != len(workloads):
+        raise ValueError("selected workloads must be unique")
+    dimensions = workloads + (() if warmup is None else (warmup,))
+    for groups, axial_layers in dimensions:
+        if groups not in GROUP_COUNTS:
+            raise ValueError(f"groups must be one of {GROUP_COUNTS}")
+        if axial_layers < 1:
+            raise ValueError("axial layers must be positive")
+    requests = []
+    for workload in workloads:
+        if warmup is not None:
+            requests.append(WorkerRequest(*warmup, case_id, record=False))
+        requests.append(WorkerRequest(*workload, case_id))
+    return tuple(requests)
+
+
+def _plan(
+    mode: str,
+    solver_case: str | None = None,
+    *,
+    workloads: tuple[tuple[int, int], ...] = (),
+    warmup: tuple[int, int] | None = None,
+    output_name: str | None = None,
+) -> RunPlan:
     """Resolve one CLI mode into an explicit immutable execution plan."""
     if mode == "smoke":
         if solver_case is not None:
-            raise ValueError("--solver applies only to baseline mode")
+            raise ValueError("--solver applies only to baseline or selected mode")
+        if workloads or warmup is not None or output_name is not None:
+            raise ValueError("workload selection applies only to selected mode")
         # pylint: disable-next=import-outside-toplevel
         from studies.finite_volume_performance.cases import DIRECT_CASE_ID
 
@@ -145,9 +171,24 @@ def _plan(mode: str, solver_case: str | None = None) -> RunPlan:
             _cell_requests(6, 2, DIRECT_CASE_ID, repetitions=1, profile=True),
         )
     if mode == "baseline":
+        if workloads or warmup is not None or output_name is not None:
+            raise ValueError("workload selection applies only to selected mode")
         case_id = _resolve_case_id(solver_case)
         return RunPlan(mode, f"baseline_{case_id}.json", _baseline_requests(case_id))
-    raise ValueError("mode must be 'smoke' or 'baseline'")
+    if mode == "selected":
+        if not workloads:
+            raise ValueError("selected mode requires at least one workload")
+        if output_name is None:
+            raise ValueError("selected mode requires an output name")
+        if Path(output_name).name != output_name or not output_name.endswith(".json"):
+            raise ValueError("output name must be a JSON filename")
+        case_id = _resolve_case_id(solver_case)
+        return RunPlan(
+            mode,
+            output_name,
+            _selected_requests(workloads, case_id, warmup),
+        )
+    raise ValueError("mode must be 'smoke', 'baseline', or 'selected'")
 
 
 def _request_id(request: WorkerRequest) -> str:
@@ -265,22 +306,34 @@ def run(
     address_space_limit_bytes: int = DEFAULT_ADDRESS_SPACE_LIMIT_BYTES,
     resume: bool = False,
     solver_case: str | None = None,
+    workloads: tuple[tuple[int, int], ...] = (),
+    warmup: tuple[int, int] | None = None,
+    output_name: str | None = None,
 ) -> Path:
     """Execute one maintained mode and return its checked JSON path."""
-    plan = _plan(mode, solver_case)
-    workloads = _workloads(plan.requests)
+    plan = _plan(
+        mode,
+        solver_case,
+        workloads=workloads,
+        warmup=warmup,
+        output_name=output_name,
+    )
+    workload_records = _workloads(plan.requests)
     output_path = output_dir / plan.output_name
     output_dir.mkdir(parents=True, exist_ok=True)
     if resume:
         document = read_document(output_path)
-        if document["workloads"] != workloads:
+        if document["workloads"] != workload_records:
             raise ValueError(
                 "cannot resume: stored workloads differ from this checkout"
             )
         outcomes = list(document["outcomes"])
     else:
         outcomes = []
-        write_document(output_path, build_document(workloads=workloads, outcomes=[]))
+        write_document(
+            output_path,
+            build_document(workloads=workload_records, outcomes=[]),
+        )
     pending = _pending_requests(plan.requests, outcomes)
     disposition = "Resuming" if resume else "Running"
     print(f"{disposition} many-group performance mode: {plan.mode}")
@@ -305,7 +358,7 @@ def run(
             outcomes.append(outcome)
             write_document(
                 output_path,
-                build_document(workloads=workloads, outcomes=outcomes),
+                build_document(workloads=workload_records, outcomes=outcomes),
             )
             _print_outcome(outcome)
     _print_summaries(plan, outcomes)
@@ -318,7 +371,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "mode",
-        choices=("smoke", "baseline"),
+        choices=("smoke", "baseline", "selected"),
         nargs="?",
         default="smoke",
     )
@@ -327,7 +380,27 @@ def parse_args() -> argparse.Namespace:
         "--solver",
         dest="solver_case",
         metavar="CASE_ID",
-        help=("baseline case: 'direct' (default) or 'gmres_jacobi'"),
+        help=("solver case for baseline or selected mode"),
+    )
+    parser.add_argument(
+        "--workload",
+        nargs=2,
+        type=int,
+        action="append",
+        default=[],
+        metavar=("GROUPS", "LAYERS"),
+        help="workload to record in selected mode; may be repeated",
+    )
+    parser.add_argument(
+        "--warmup",
+        nargs=2,
+        type=int,
+        metavar=("GROUPS", "LAYERS"),
+        help="optional unrecorded workload before each selected workload",
+    )
+    parser.add_argument(
+        "--output-name",
+        help="JSON filename required by selected mode",
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -344,7 +417,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--resume",
         action="store_true",
-        help="append only missing outcomes to the selected mode's JSON",
+        help="append only missing outcomes to the chosen mode's JSON",
     )
     return parser.parse_args()
 
@@ -359,4 +432,7 @@ def main() -> None:
         address_space_limit_bytes=int(arguments.address_space_limit_gib * 1024**3),
         resume=arguments.resume,
         solver_case=arguments.solver_case,
+        workloads=tuple(tuple(item) for item in arguments.workload),
+        warmup=None if arguments.warmup is None else tuple(arguments.warmup),
+        output_name=arguments.output_name,
     )
