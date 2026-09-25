@@ -215,18 +215,23 @@ result = solve_fixed_source(solve_input)
 
 `FixedSourceSettings` and `KeffSettings` are separate immutable value objects.
 Their `linear_solve` and `inner_linear_solve` fields respectively own a typed
-`DirectLinearSolveSettings` or `GmresLinearSolveSettings` policy. Direct sparse
-solving is the default; `GmresLinearSolveSettings` selects restarted SciPy
-GMRES with one typed `NoPreconditioner`, `JacobiPreconditioner`, or
-`IluPreconditioner`. Jacobi uses the assembled diagonal, while threshold-ILU
-uses its configured drop tolerance and fill-factor limit. Fixed-source GMRES
-starts from zero and constructs its preconditioner for that one solve.
-Criticality constructs a direct factorization or GMRES preconditioner once per
-`solve_keff()` call and reuses that setup for the call's inner right-hand
-sides. GMRES criticality starts its first inner solve from zero and each later
-one from the preceding cleaned, pre-normalization inner solution.
+`DirectLinearSolveSettings`, `GmresLinearSolveSettings`, or
+`BicgstabLinearSolveSettings` policy. Direct sparse solving is the reference
+default. BiCGSTAB with Jacobi is the recommended scalable policy; restarted
+GMRES remains a secondary independent Krylov route, primarily for ordinary
+criticality and comparison on new workload families. Both iterative settings
+default to `JacobiPreconditioner` and accept an explicit `NoPreconditioner`
+fallback. Jacobi requires finite nonzero assembled diagonal entries and finite
+reciprocals. If that check fails, Morana raises rather than silently changing
+policy; select `NoPreconditioner()` explicitly when appropriate.
+Fixed-source iteration starts from zero and constructs its preconditioner for
+that one solve. Criticality constructs a direct factorization or iterative
+preconditioner once per `solve_keff()` call and reuses that setup for the
+call's inner right-hand sides. Each iterative criticality policy starts its
+first inner solve from zero and each later one from the preceding cleaned,
+pre-normalization inner solution.
 The [theory and numerical conventions](theory_references.md#linear-algebra-execution)
-define the direct/GMRES residual, left preconditioning, ordinary power
+define the linear residual, left preconditioning, ordinary power
 iteration, and fixed-Wielandt transformation. All numerical controls are
 finite; residual controls must be positive, while the flux-roundoff tolerance
 may be zero. `KeffSettings` owns explicit `max_outer_iterations` and the three
@@ -245,10 +250,13 @@ Direct fixed-source execution uses SciPy
 [`spsolve`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.spsolve.html).
 GMRES execution uses SciPy
 [`gmres`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.gmres.html)
-and records its completed Krylov-iteration count. Criticality direct solving
+and BiCGSTAB execution uses SciPy
+[`bicgstab`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.bicgstab.html).
+Each records its solver-specific completed iteration count; those counts are
+not directly comparable between methods. Criticality direct solving
 reuses one SciPy
 [`splu`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.splu.html)
-factorization during power iteration. Every completed direct or GMRES solve
+factorization during power iteration. Every completed linear solve
 must meet the selected policy's independently calculated true-relative-residual
 bound after SciPy returns; backend convergence alone is insufficient.
 Criticality records multiplication-factor, flux-shape, and equation-residual
@@ -258,7 +266,7 @@ original unshifted eigenvalue equation.
 
 For fixed source, the optional configured volumetric source and any
 inhomogeneous resolved boundary terms form the right-hand side of the coupled
-loss-minus-fission system. The configured direct or GMRES solution must meet
+loss-minus-fission system. The configured linear solution must meet
 its typed policy's true-residual bound, and only negative flux within
 `flux_nonnegativity_tolerance` times the solution's largest magnitude is
 cleaned to zero. The result has `keff=None` and one recorded linear solve.
@@ -397,12 +405,13 @@ flow, packing, prerequisites, and ownership rules.
   supported runtime-MGXS format. Geometry, material placement, sources,
   boundaries, tally-postprocessing stores, and microscopic number densities
   remain part of the surrounding application.
-- `solve_keff()` supports multigroup layered direct or GMRES inner solves with
+- `solve_keff()` supports multigroup layered direct, GMRES, or BiCGSTAB inner solves with
   ordinary or fixed-Wielandt-shifted fission-source iteration. Start with the
-  direct ordinary policy as a reference. Consider GMRES and its typed
-  preconditioner for larger sparse systems, and use a fixed Wielandt shift only
-  after a reference run identifies slow outer convergence and provides a safe
-  inverse-`k_eff` estimate below the dominant value. It rejects independent
+  direct ordinary policy as a reference. Use Jacobi-BiCGSTAB as the evidenced
+  scalable recommendation; GMRES is the secondary route and has weak evidence
+  on the shifted operator. Use a fixed Wielandt shift only after a reference
+  run identifies slow outer convergence and provides a safe inverse-`k_eff`
+  estimate below the dominant value. It rejects independent
   sources, nonhomogeneous boundary data, missing fission normalization, meshes
   without active or fissionable cells, and unusable ordinary or shifted
   operators. `PowerNormalization` additionally requires recoverable

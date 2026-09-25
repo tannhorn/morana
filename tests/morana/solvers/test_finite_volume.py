@@ -5,8 +5,10 @@ from fractions import Fraction
 
 import numpy as np
 import pytest
+from scipy.sparse import csr_matrix
 
 from morana import (
+    BicgstabLinearSolveSettings,
     FissionData,
     FissionTransfer,
     SeparableFission,
@@ -27,7 +29,6 @@ from morana import (
     KeffOuterIterationReport,
     LinearSolveReport,
     GmresLinearSolveSettings,
-    IluPreconditioner,
     JacobiPreconditioner,
     NoPreconditioner,
     PowerIterationSettings,
@@ -174,21 +175,28 @@ def test_keff_settings_require_one_typed_eigenvalue_iteration_policy() -> None:
         KeffSettings(eigenvalue_iteration="wielandt")  # type: ignore[arg-type]
 
 
-def test_gmres_settings_own_one_typed_preconditioner() -> None:
-    """GMRES policy should retain its typed execution configuration."""
+@pytest.mark.parametrize(
+    "settings_type", [GmresLinearSolveSettings, BicgstabLinearSolveSettings]
+)
+def test_iterative_settings_own_one_typed_preconditioner(settings_type: type) -> None:
+    """Iterative policies should retain their typed execution configuration."""
+    settings = settings_type(max_krylov_iterations=100)
+
+    assert settings.preconditioner == JacobiPreconditioner()
+    assert (
+        settings_type(preconditioner=NoPreconditioner()).preconditioner
+        == NoPreconditioner()
+    )
+
+
+def test_gmres_settings_own_restart_control() -> None:
+    """Restart length should remain a GMRES-specific control."""
     settings = GmresLinearSolveSettings(
         max_krylov_iterations=25,
         restart=10,
-        preconditioner=IluPreconditioner(drop_tolerance=1.0e-5, fill_factor=4.0),
     )
 
-    assert settings.preconditioner == IluPreconditioner(1.0e-5, 4.0)
-    assert GmresLinearSolveSettings(
-        preconditioner=NoPreconditioner()
-    ).preconditioner == (NoPreconditioner())
-    assert GmresLinearSolveSettings(
-        preconditioner=JacobiPreconditioner()
-    ).preconditioner == (JacobiPreconditioner())
+    assert settings.restart == 10
 
 
 @pytest.mark.parametrize(
@@ -196,6 +204,10 @@ def test_gmres_settings_own_one_typed_preconditioner() -> None:
     [
         (
             lambda: GmresLinearSolveSettings(preconditioner="jacobi"),
+            "preconditioner",
+        ),
+        (
+            lambda: BicgstabLinearSolveSettings(preconditioner="jacobi"),
             "preconditioner",
         ),
         (lambda: FixedSourceSettings(linear_solve="direct"), "linear_solve"),
@@ -220,14 +232,9 @@ def test_solve_settings_normalize_accepted_numeric_scalars() -> None:
     direct = DirectLinearSolveSettings(Fraction(1, 10))
     fixed_source = FixedSourceSettings(flux_nonnegativity_tolerance=Fraction(1, 10))
     settings = KeffSettings(
-        inner_linear_solve=GmresLinearSolveSettings(
+        inner_linear_solve=BicgstabLinearSolveSettings(
             relative_residual_tolerance=Fraction(1, 10),
             max_krylov_iterations=np.int64(25),
-            restart=np.int64(10),
-            preconditioner=IluPreconditioner(
-                drop_tolerance=Fraction(1, 1000),
-                fill_factor=np.float64(4.0),
-            ),
         ),
         max_outer_iterations=np.int64(20),
         keff_change_tolerance=Fraction(1, 10_000),
@@ -242,9 +249,7 @@ def test_solve_settings_normalize_accepted_numeric_scalars() -> None:
     linear_solve = settings.inner_linear_solve
     assert isinstance(linear_solve.relative_residual_tolerance, float)
     assert isinstance(linear_solve.max_krylov_iterations, int)
-    assert isinstance(linear_solve.restart, int)
-    assert isinstance(linear_solve.preconditioner.drop_tolerance, float)
-    assert isinstance(linear_solve.preconditioner.fill_factor, float)
+    assert isinstance(linear_solve.preconditioner, JacobiPreconditioner)
     assert isinstance(settings.max_outer_iterations, int)
     assert isinstance(settings.keff_change_tolerance, float)
     assert isinstance(settings.flux_change_tolerance, float)
@@ -264,19 +269,18 @@ def test_solve_settings_reject_real_values_outside_float_range(value: Fraction) 
     ("settings", "match"),
     [
         (GmresLinearSolveSettings, "max_krylov_iterations"),
+        (BicgstabLinearSolveSettings, "max_krylov_iterations"),
         (
             lambda: GmresLinearSolveSettings(restart=3, max_krylov_iterations=2),
             "restart",
         ),
-        (lambda: IluPreconditioner(drop_tolerance=-1.0), "drop_tolerance"),
-        (lambda: IluPreconditioner(fill_factor=0.0), "fill_factor"),
     ],
 )
 def test_iterative_policy_checks_its_controls(settings: object, match: str) -> None:
     """Iterative policy construction should reject invalid numerical controls."""
-    if settings is GmresLinearSolveSettings:
+    if settings in (GmresLinearSolveSettings, BicgstabLinearSolveSettings):
         with pytest.raises(ValueError, match=match):
-            GmresLinearSolveSettings(max_krylov_iterations=0)
+            settings(max_krylov_iterations=0)  # type: ignore[operator]
     else:
         with pytest.raises(ValueError, match=match):
             settings()  # type: ignore[operator]
@@ -390,19 +394,27 @@ def test_direct_solve_matches_reflected_one_cell_analytic_flux() -> None:
 
 @pytest.mark.parametrize(
     "preconditioner",
-    [NoPreconditioner(), JacobiPreconditioner(), IluPreconditioner()],
-    ids=["none", "jacobi", "ilu"],
+    [NoPreconditioner(), JacobiPreconditioner()],
+    ids=["none", "jacobi"],
 )
-def test_gmres_fixed_source_matches_direct_analytic_flux(
-    preconditioner: NoPreconditioner | JacobiPreconditioner | IluPreconditioner,
+@pytest.mark.parametrize(
+    "settings_type",
+    [GmresLinearSolveSettings, BicgstabLinearSolveSettings],
+    ids=["gmres", "bicgstab"],
+)
+def test_iterative_fixed_source_matches_direct_analytic_flux(
+    preconditioner: NoPreconditioner | JacobiPreconditioner,
+    settings_type: type,
 ) -> None:
-    """Each supported GMRES preconditioner should solve the analytic cell case."""
-    linear_solve = GmresLinearSolveSettings(
-        relative_residual_tolerance=1.0e-12,
-        max_krylov_iterations=10,
-        restart=5,
-        preconditioner=preconditioner,
-    )
+    """Each supported iterative policy should solve the analytic cell case."""
+    arguments = {
+        "relative_residual_tolerance": 1.0e-12,
+        "max_krylov_iterations": 10,
+        "preconditioner": preconditioner,
+    }
+    if settings_type is GmresLinearSolveSettings:
+        arguments["restart"] = 5
+    linear_solve = settings_type(**arguments)
 
     result = solve_fixed_source(
         make_configuration(), FixedSourceSettings(linear_solve=linear_solve)
@@ -410,9 +422,9 @@ def test_gmres_fixed_source_matches_direct_analytic_flux(
 
     np.testing.assert_allclose(result.flux_layer(0), [[50.0]])
     assert result.execution_report.linear_solve is linear_solve
-    assert result.execution_report.strategy == "gmres"
+    assert result.execution_report.strategy == linear_solve.strategy
     assert result.execution_report.preconditioner is preconditioner
-    assert 1 <= result.execution_report.iterations <= linear_solve.max_krylov_iterations
+    assert 0 <= result.execution_report.iterations <= linear_solve.max_krylov_iterations
     assert (
         result.execution_report.true_relative_residual
         <= linear_solve.relative_residual_tolerance
@@ -453,6 +465,58 @@ def test_gmres_checks_its_true_residual_after_backend_convergence(
 
     with pytest.raises(ValueError, match="linear residual exceeds tolerance"):
         solve_fixed_source(make_configuration(), settings)
+
+
+@pytest.mark.parametrize(
+    ("status", "match"),
+    [(1, "did not converge"), (-10, "broke down")],
+)
+def test_bicgstab_rejects_backend_failure(
+    monkeypatch: pytest.MonkeyPatch, status: int, match: str
+) -> None:
+    """BiCGSTAB nonconvergence and breakdown must not produce a result."""
+
+    def unfinished_bicgstab(*_args, **_kwargs):
+        """Imitate one unsuccessful BiCGSTAB outcome."""
+        return np.ones(1), status
+
+    monkeypatch.setattr(finite_volume_module, "bicgstab", unfinished_bicgstab)
+    settings = FixedSourceSettings(
+        linear_solve=BicgstabLinearSolveSettings(max_krylov_iterations=1)
+    )
+
+    with pytest.raises(ValueError, match=match):
+        solve_fixed_source(make_configuration(), settings)
+
+
+def test_bicgstab_checks_its_true_residual_after_backend_convergence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BiCGSTAB backend success remains subject to the true-residual check."""
+
+    def inaccurate_bicgstab(*_args, **_kwargs):
+        """Imitate a backend that incorrectly reports convergence."""
+        return np.ones(1), 0
+
+    monkeypatch.setattr(finite_volume_module, "bicgstab", inaccurate_bicgstab)
+    settings = FixedSourceSettings(
+        linear_solve=BicgstabLinearSolveSettings(relative_residual_tolerance=1.0e-12)
+    )
+
+    with pytest.raises(ValueError, match="linear residual exceeds tolerance"):
+        solve_fixed_source(make_configuration(), settings)
+
+
+def test_jacobi_rejects_a_nonfinite_diagonal_reciprocal() -> None:
+    """Jacobi should reject a finite nonzero entry whose reciprocal overflows."""
+    matrix = csr_matrix([[np.nextafter(0.0, 1.0)]])
+
+    with pytest.raises(ValueError, match="diagonal entries and reciprocals"):
+        finite_volume_module._build_iterative_preconditioner(
+            matrix,
+            BicgstabLinearSolveSettings(),
+            "test solve",
+        )
 
 
 def test_uniform_reflected_domain_has_uniform_analytic_flux() -> None:
@@ -1390,10 +1454,26 @@ def test_keff_multiplicity_satisfies_assembled_operator_identity() -> None:
     np.testing.assert_allclose(result.balance.by_group["residual"], 0.0, atol=1.0e-12)
 
 
-def test_keff_gmres_reuses_its_ilu_preconditioner_within_one_call(
+@pytest.mark.parametrize(
+    "linear_solve",
+    [
+        GmresLinearSolveSettings(
+            relative_residual_tolerance=1.0e-12,
+            max_krylov_iterations=10,
+            restart=5,
+        ),
+        BicgstabLinearSolveSettings(
+            relative_residual_tolerance=1.0e-12,
+            max_krylov_iterations=10,
+        ),
+    ],
+    ids=["gmres", "bicgstab"],
+)
+def test_keff_iterative_solve_builds_its_preconditioner_once(
     monkeypatch: pytest.MonkeyPatch,
+    linear_solve: GmresLinearSolveSettings | BicgstabLinearSolveSettings,
 ) -> None:
-    """Criticality GMRES should prepare ILU once and report each inner solve."""
+    """Criticality should prepare Jacobi once and report each inner solve."""
     mesh = HexPlanarMesh(1, pitch=10.0)
     medium = Material(
         "medium",
@@ -1414,12 +1494,6 @@ def test_keff_gmres_reuses_its_ilu_preconditioner_within_one_call(
         ),
         boundary=BoundaryConditionSet(BoundaryCondition.reflective().globally()),
     )
-    linear_solve = GmresLinearSolveSettings(
-        relative_residual_tolerance=1.0e-12,
-        max_krylov_iterations=10,
-        restart=5,
-        preconditioner=IluPreconditioner(),
-    )
     settings = KeffSettings(
         inner_linear_solve=linear_solve,
         keff_change_tolerance=1.0e-12,
@@ -1428,15 +1502,17 @@ def test_keff_gmres_reuses_its_ilu_preconditioner_within_one_call(
     )
 
     preconditioner_count = 0
-    original_spilu = finite_volume_module.spilu
+    original_build = finite_volume_module._build_iterative_preconditioner
 
     def count_preconditioners(*args, **kwargs):
-        """Count production ILU setup calls."""
+        """Count production iterative-preconditioner setup calls."""
         nonlocal preconditioner_count
         preconditioner_count += 1
-        return original_spilu(*args, **kwargs)
+        return original_build(*args, **kwargs)
 
-    monkeypatch.setattr(finite_volume_module, "spilu", count_preconditioners)
+    monkeypatch.setattr(
+        finite_volume_module, "_build_iterative_preconditioner", count_preconditioners
+    )
 
     result = solve_keff(configuration, FissionSourceNormalization(rate=1.0), settings)
 
@@ -1445,7 +1521,9 @@ def test_keff_gmres_reuses_its_ilu_preconditioner_within_one_call(
     reports = result.execution_report.outer_iterations
     assert len(reports) == 2
     assert all(report.linear_solve.linear_solve is linear_solve for report in reports)
-    assert all(report.linear_solve.strategy == "gmres" for report in reports)
+    assert all(
+        report.linear_solve.strategy == linear_solve.strategy for report in reports
+    )
     assert all(
         report.linear_solve.preconditioner is linear_solve.preconditioner
         for report in reports
@@ -1458,19 +1536,37 @@ def test_keff_gmres_reuses_its_ilu_preconditioner_within_one_call(
     [PowerIterationSettings(), WielandtShiftSettings(shift_inverse_keff=0.5)],
     ids=["ordinary", "fixed_wielandt"],
 )
-def test_gmres_criticality_continuation_uses_prior_cleaned_inner_solution(
+@pytest.mark.parametrize(
+    ("linear_solve", "solve_attribute"),
+    [
+        (
+            GmresLinearSolveSettings(
+                relative_residual_tolerance=1.0e-12,
+                max_krylov_iterations=100,
+                restart=10,
+            ),
+            "_solve_gmres_system",
+        ),
+        (
+            BicgstabLinearSolveSettings(
+                relative_residual_tolerance=1.0e-12,
+                max_krylov_iterations=100,
+            ),
+            "_solve_bicgstab_system",
+        ),
+    ],
+    ids=["gmres", "bicgstab"],
+)
+def test_iterative_criticality_continuation_uses_prior_cleaned_inner_solution(
     monkeypatch: pytest.MonkeyPatch,
     eigenvalue_iteration: PowerIterationSettings | WielandtShiftSettings,
+    linear_solve: GmresLinearSolveSettings | BicgstabLinearSolveSettings,
+    solve_attribute: str,
 ) -> None:
-    """Each later GMRES solve starts from its prior cleaned inner solution."""
+    """Each later iterative solve starts from its prior cleaned inner solution."""
     configuration = _snapshot_keff_configuration()
     settings = KeffSettings(
-        inner_linear_solve=GmresLinearSolveSettings(
-            relative_residual_tolerance=1.0e-12,
-            max_krylov_iterations=100,
-            restart=10,
-            preconditioner=JacobiPreconditioner(),
-        ),
+        inner_linear_solve=linear_solve,
         eigenvalue_iteration=eigenvalue_iteration,
     )
     problem = finite_volume_module._prepare_keff_problem(
@@ -1478,11 +1574,11 @@ def test_gmres_criticality_continuation_uses_prior_cleaned_inner_solution(
     )
     initial_guesses: list[np.ndarray | None] = []
     cleaned_inner_solutions: list[np.ndarray] = []
-    original_solve = finite_volume_module._solve_gmres_system
+    original_solve = getattr(finite_volume_module, solve_attribute)
     original_clean = finite_volume_module._clean_keff_flux
 
     def capture_initial_guess(*args, **kwargs):
-        """Record guesses without changing the selected GMRES solve."""
+        """Record guesses without changing the selected iterative solve."""
         guess = kwargs.get("initial_guess")
         initial_guesses.append(None if guess is None else np.array(guess, copy=True))
         return original_solve(*args, **kwargs)
@@ -1493,9 +1589,7 @@ def test_gmres_criticality_continuation_uses_prior_cleaned_inner_solution(
         cleaned_inner_solutions.append(np.array(candidate, copy=True))
         return candidate
 
-    monkeypatch.setattr(
-        finite_volume_module, "_solve_gmres_system", capture_initial_guess
-    )
+    monkeypatch.setattr(finite_volume_module, solve_attribute, capture_initial_guess)
     monkeypatch.setattr(
         finite_volume_module, "_clean_keff_flux", capture_cleaned_inner_solution
     )
@@ -1509,33 +1603,45 @@ def test_gmres_criticality_continuation_uses_prior_cleaned_inner_solution(
         np.testing.assert_array_equal(guess, prior_candidate)
 
 
+@pytest.mark.parametrize(
+    ("linear_solve", "solve_attribute"),
+    [
+        (
+            GmresLinearSolveSettings(relative_residual_tolerance=1.0e-12),
+            "_solve_gmres_system",
+        ),
+        (
+            BicgstabLinearSolveSettings(relative_residual_tolerance=1.0e-12),
+            "_solve_bicgstab_system",
+        ),
+    ],
+    ids=["gmres", "bicgstab"],
+)
 def test_noncriticality_and_direct_solves_do_not_receive_continuation(
     monkeypatch: pytest.MonkeyPatch,
+    linear_solve: GmresLinearSolveSettings | BicgstabLinearSolveSettings,
+    solve_attribute: str,
 ) -> None:
-    """Fixed-source GMRES and direct criticality never receive an initial guess."""
-    gmres_guesses: list[np.ndarray | None] = []
+    """Fixed-source iteration and direct criticality receive no initial guess."""
+    iterative_guesses: list[np.ndarray | None] = []
     direct_guesses: list[np.ndarray | None] = []
-    original_gmres = finite_volume_module._solve_gmres_system
+    original_iterative = getattr(finite_volume_module, solve_attribute)
     original_prepared = finite_volume_module._solve_prepared_linear_system
 
-    def capture_gmres_guess(*args, **kwargs):
-        gmres_guesses.append(kwargs.get("initial_guess"))
-        return original_gmres(*args, **kwargs)
+    def capture_iterative_guess(*args, **kwargs):
+        iterative_guesses.append(kwargs.get("initial_guess"))
+        return original_iterative(*args, **kwargs)
 
     def capture_direct_guess(*args, **kwargs):
         direct_guesses.append(kwargs.get("initial_guess"))
         return original_prepared(*args, **kwargs)
 
-    monkeypatch.setattr(
-        finite_volume_module, "_solve_gmres_system", capture_gmres_guess
-    )
+    monkeypatch.setattr(finite_volume_module, solve_attribute, capture_iterative_guess)
     solve_fixed_source(
         _snapshot_fixed_source_configuration(),
-        FixedSourceSettings(
-            linear_solve=GmresLinearSolveSettings(relative_residual_tolerance=1.0e-12)
-        ),
+        FixedSourceSettings(linear_solve=linear_solve),
     )
-    assert gmres_guesses == [None]
+    assert iterative_guesses == [None]
 
     monkeypatch.setattr(
         finite_volume_module, "_solve_prepared_linear_system", capture_direct_guess

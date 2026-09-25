@@ -51,6 +51,7 @@ from examples._hex_z_mms import (  # pylint: disable=wrong-import-position
 
 from morana.solvers.finite_volume import solve_fixed_source
 from morana import (  # pylint: disable=wrong-import-position
+    BicgstabLinearSolveSettings,
     BoundaryCondition,
     BoundaryConditionSet,
     CellSource,
@@ -60,13 +61,11 @@ from morana import (  # pylint: disable=wrong-import-position
     FixedSourceSettings,
     GmresLinearSolveSettings,
     HexPlanarMesh,
-    IluPreconditioner,
     JacobiPreconditioner,
     Material,
     MaterialMesh,
     MaterialSlice,
     ProblemConfiguration,
-    NoPreconditioner,
 )
 
 MEDIUM_KEY = "mms_medium"
@@ -428,15 +427,6 @@ def strategy_settings() -> tuple[tuple[str, FixedSourceSettings], ...]:
             ),
         ),
         (
-            "gmres-none",
-            FixedSourceSettings(
-                linear_solve=GmresLinearSolveSettings(
-                    relative_residual_tolerance=tolerance,
-                    preconditioner=NoPreconditioner(),
-                ),
-            ),
-        ),
-        (
             "gmres-jacobi",
             FixedSourceSettings(
                 linear_solve=GmresLinearSolveSettings(
@@ -446,11 +436,11 @@ def strategy_settings() -> tuple[tuple[str, FixedSourceSettings], ...]:
             ),
         ),
         (
-            "gmres-ilu",
+            "bicgstab-jacobi",
             FixedSourceSettings(
-                linear_solve=GmresLinearSolveSettings(
+                linear_solve=BicgstabLinearSolveSettings(
                     relative_residual_tolerance=tolerance,
-                    preconditioner=IluPreconditioner(),
+                    preconditioner=JacobiPreconditioner(),
                 ),
             ),
         ),
@@ -707,11 +697,11 @@ def _print_strategy_comparison(
 ) -> None:
     """Print compact fixed-source strategy evidence after successful checks."""
     print("MMS strategy comparison")
-    print("strategy       level  relative L2 error  linear residual")
+    print("strategy             level  relative L2 error  linear residual")
     for strategy, rows in comparisons.items():
         for row in rows:
             print(
-                f"{strategy:13}  {row.level:5d}  {row.relative_l2_error:17.8e}"
+                f"{strategy:20}  {row.level:5d}  {row.relative_l2_error:17.8e}"
                 f"  {row.linear_residual:15.8e}"
             )
 

@@ -314,8 +314,9 @@ Run the maintained case from the repository root:
 python -m examples.keff_mms
 ```
 
-To repeat the full refinement study with the maintained direct/GMRES and
-fixed-Wielandt strategy set, add `--compare-strategies`:
+To repeat the full refinement study with the maintained direct,
+Jacobi-GMRES, Jacobi-BiCGSTAB, and fixed-Wielandt strategy set, add
+`--compare-strategies`:
 
 ```bash
 python -m examples.keff_mms --compare-strategies
@@ -326,9 +327,9 @@ the same residual, balance, and refinement-error acceptance criteria. The
 ordinary run remains direct-power only so its verification figures stay
 compact. The option prints per-strategy/per-level eigenvalue-error,
 outer-iteration, and residual rows and writes them to
-`strategy_comparison.csv`.
-The comparison includes a GMRES-ILU/Wielandt combination as well as the
-direct-Wielandt reference. For a one-level table that also reports
+`strategy_comparison.csv`. The comparison applies direct, Jacobi-GMRES, and
+Jacobi-BiCGSTAB inner solves to both ordinary and fixed-Wielandt iteration.
+For a one-level table that also reports
 informational setup/solve timing and outer/inner counts, run
 `examples/solver_comparison.py`.
 

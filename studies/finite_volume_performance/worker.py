@@ -57,8 +57,15 @@ def main() -> None:
         from studies.finite_volume_performance.gmres import measure_gmres_jacobi
 
         measure = measure_gmres_jacobi
+    elif arguments.solver_case == "bicgstab_jacobi":
+        # pylint: disable-next=import-outside-toplevel
+        from studies.finite_volume_performance.gmres import measure_bicgstab_jacobi
+
+        measure = measure_bicgstab_jacobi
     else:
-        raise ValueError("solver-case must be 'direct' or 'gmres_jacobi'")
+        raise ValueError(
+            "solver-case must be 'direct', 'gmres_jacobi', or " "'bicgstab_jacobi'"
+        )
     outcome = measure(
         arguments.groups,
         arguments.axial_layers,

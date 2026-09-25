@@ -48,6 +48,7 @@ from examples._hex_z_mms import (  # pylint: disable=wrong-import-position
 )
 from morana.solvers.finite_volume import solve_keff
 from morana import (  # pylint: disable=wrong-import-position
+    BicgstabLinearSolveSettings,
     BoundaryCondition,
     BoundaryConditionSet,
     CrossSections,
@@ -63,9 +64,7 @@ from morana import (  # pylint: disable=wrong-import-position
     ProblemConfiguration,
     KeffSettings,
     SeparableFission,
-    IluPreconditioner,
     JacobiPreconditioner,
-    NoPreconditioner,
     WielandtShiftSettings,
 )
 
@@ -381,16 +380,6 @@ def strategy_settings() -> tuple[tuple[str, KeffSettings], ...]:
     return (
         ("direct-power", KeffSettings(inner_linear_solve=direct, **common)),
         (
-            "gmres-none-power",
-            KeffSettings(
-                inner_linear_solve=GmresLinearSolveSettings(
-                    relative_residual_tolerance=tolerance,
-                    preconditioner=NoPreconditioner(),
-                ),
-                **common,
-            ),
-        ),
-        (
             "gmres-jacobi-power",
             KeffSettings(
                 inner_linear_solve=GmresLinearSolveSettings(
@@ -401,11 +390,11 @@ def strategy_settings() -> tuple[tuple[str, KeffSettings], ...]:
             ),
         ),
         (
-            "gmres-ilu-power",
+            "bicgstab-jacobi-power",
             KeffSettings(
-                inner_linear_solve=GmresLinearSolveSettings(
+                inner_linear_solve=BicgstabLinearSolveSettings(
                     relative_residual_tolerance=tolerance,
-                    preconditioner=IluPreconditioner(),
+                    preconditioner=JacobiPreconditioner(),
                 ),
                 **common,
             ),
@@ -419,11 +408,22 @@ def strategy_settings() -> tuple[tuple[str, KeffSettings], ...]:
             ),
         ),
         (
-            "gmres-ilu-wielandt",
+            "gmres-jacobi-wielandt",
             KeffSettings(
                 inner_linear_solve=GmresLinearSolveSettings(
                     relative_residual_tolerance=tolerance,
-                    preconditioner=IluPreconditioner(),
+                    preconditioner=JacobiPreconditioner(),
+                ),
+                eigenvalue_iteration=WielandtShiftSettings(0.9),
+                **common,
+            ),
+        ),
+        (
+            "bicgstab-jacobi-wielandt",
+            KeffSettings(
+                inner_linear_solve=BicgstabLinearSolveSettings(
+                    relative_residual_tolerance=tolerance,
+                    preconditioner=JacobiPreconditioner(),
                 ),
                 eigenvalue_iteration=WielandtShiftSettings(0.9),
                 **common,
@@ -694,11 +694,11 @@ def _print_strategy_comparison(
 ) -> None:
     """Print compact k-effective strategy evidence after successful checks."""
     print("MMS strategy comparison")
-    print("strategy             level  k-effective error  outer  residual")
+    print("strategy                    level  k-effective error  outer  residual")
     for strategy, rows in comparisons.items():
         for row in rows:
             print(
-                f"{strategy:19}  {row.level:5d}  {row.keff_relative_error:16.8e}"
+                f"{strategy:27}  {row.level:5d}  {row.keff_relative_error:16.8e}"
                 f"  {row.iterations:5d}  {row.keff_relative_residual:15.8e}"
             )
 

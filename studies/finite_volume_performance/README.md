@@ -15,11 +15,12 @@ The routine smoke workflow is:
 python -m studies.finite_volume_performance
 ```
 
-The long-running direct-reference and GMRES/Jacobi baselines are explicit:
+The long-running production-policy baselines are explicit:
 
 ```bash
 python -m studies.finite_volume_performance baseline
 python -m studies.finite_volume_performance baseline --solver gmres_jacobi
+python -m studies.finite_volume_performance baseline --solver bicgstab_jacobi
 ```
 
 Every baseline workload uses the same unrecorded `(6 groups, 2 layers)`

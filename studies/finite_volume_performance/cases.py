@@ -11,7 +11,8 @@ from dataclasses import asdict, replace
 
 DIRECT_CASE_ID = "direct"
 GMRES_JACOBI_CASE_ID = "gmres_jacobi"
-CASE_IDS = (DIRECT_CASE_ID, GMRES_JACOBI_CASE_ID)
+BICGSTAB_JACOBI_CASE_ID = "bicgstab_jacobi"
+CASE_IDS = (DIRECT_CASE_ID, GMRES_JACOBI_CASE_ID, BICGSTAB_JACOBI_CASE_ID)
 POWER_ITERATION_ID = "power"
 WIELANDT_ITERATION_ID = "wielandt"
 ITERATION_IDS = (POWER_ITERATION_ID, WIELANDT_ITERATION_ID)
@@ -50,7 +51,11 @@ def iteration_identifier(iteration: Mapping[str, object]) -> str:
 
 def _base_settings(case_id: str):
     """Return settings carrying only one frozen linear-solve case choice."""
-    from morana import GmresLinearSolveSettings, JacobiPreconditioner
+    from morana import (
+        BicgstabLinearSolveSettings,
+        GmresLinearSolveSettings,
+        JacobiPreconditioner,
+    )
     from studies.finite_volume_performance.workload import solve_settings
 
     baseline = solve_settings()
@@ -65,6 +70,17 @@ def _base_settings(case_id: str):
                 ),
                 max_krylov_iterations=1_000,
                 restart=50,
+                preconditioner=JacobiPreconditioner(),
+            ),
+        )
+    if case_id == BICGSTAB_JACOBI_CASE_ID:
+        return replace(
+            baseline,
+            inner_linear_solve=BicgstabLinearSolveSettings(
+                relative_residual_tolerance=(
+                    baseline.inner_linear_solve.relative_residual_tolerance
+                ),
+                max_krylov_iterations=1_000,
                 preconditioner=JacobiPreconditioner(),
             ),
         )
@@ -97,8 +113,13 @@ def records() -> list[dict[str, object]]:
     result = []
     for case_id in CASE_IDS:
         linear_solve = asdict(_base_settings(case_id).inner_linear_solve)
-        linear_solve["strategy"] = "direct" if case_id == DIRECT_CASE_ID else "gmres"
-        if case_id == GMRES_JACOBI_CASE_ID:
+        strategy = {
+            DIRECT_CASE_ID: "direct",
+            GMRES_JACOBI_CASE_ID: "gmres",
+            BICGSTAB_JACOBI_CASE_ID: "bicgstab",
+        }[case_id]
+        linear_solve["strategy"] = strategy
+        if case_id in {GMRES_JACOBI_CASE_ID, BICGSTAB_JACOBI_CASE_ID}:
             linear_solve["preconditioner"]["kind"] = "jacobi"
         result.append({"case_id": case_id, "linear_solve": linear_solve})
     return result

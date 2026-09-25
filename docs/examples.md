@@ -171,10 +171,10 @@ python -m examples.keff_mms
 [`solver_comparison.py`](https://github.com/tannhorn/morana/blob/main/examples/solver_comparison.py)
 runs the maintained strategy set once on refinement
 level 1 of the independently manufactured cases. The fixed-source set covers
-direct solving and GMRES with no, Jacobi, or ILU preconditioning. The
-criticality set applies those four linear policies to ordinary power iteration
-and also exercises fixed-Wielandt iteration with direct and GMRES–ILU inner
-solves. Its compact console table reports configuration setup and solve times,
+direct, Jacobi-GMRES, and Jacobi-BiCGSTAB solving. The criticality set applies
+those three linear policies to ordinary power iteration and also exercises
+fixed-Wielandt iteration with each inner policy. Its compact console table
+reports configuration setup and solve times,
 outer and total inner iterations, final residuals, and the relevant
 manufactured-reference errors. Timing is informative only: portability and
 correctness rely on the MMS residual and reference-error checks, not relative

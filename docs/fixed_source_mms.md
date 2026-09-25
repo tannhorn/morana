@@ -464,8 +464,9 @@ Run the maintained case from the repository root:
 python -m examples.fixed_source_mms
 ```
 
-To repeat the full refinement study with every supported direct and GMRES
-linear policy, add `--compare-strategies`:
+To repeat the full refinement study with the maintained direct,
+Jacobi-GMRES, and Jacobi-BiCGSTAB linear policies, add
+`--compare-strategies`:
 
 ```bash
 python -m examples.fixed_source_mms --compare-strategies

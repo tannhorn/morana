@@ -831,34 +831,35 @@ successive physical flux shapes, weighting each cell by its volume.
 The fixed-source system uses $B=A-F$ and right-hand side $\mathbf b$. An
 ordinary criticality inner iteration uses $B=A$ and right-hand side
 $F\boldsymbol\phi^{(n)}$; a fixed-Wielandt iteration changes $B$ as defined
-below. Morana offers either a sparse direct reference solve or restarted GMRES.
-Fixed-source GMRES and the first criticality inner solve use the zero initial
-guess; later GMRES criticality inner solves use the preceding cleaned,
-pre-normalization inner solution. Both policies solve the same algebraic problem
-with the same physical-flux acceptance criteria.
+below. Morana offers a sparse direct reference solve, restarted GMRES, or
+BiCGSTAB. Fixed-source iteration and the first criticality inner solve use the
+zero initial guess; later iterative criticality inner solves use the preceding
+cleaned, pre-normalization inner solution. All policies solve the same
+algebraic problem with the same physical-flux acceptance criteria.
 
-For GMRES with a preconditioner $P$, the iterated system is the
-left-preconditioned form
+For either iterative policy with a preconditioner $P$, the iterated system is
+the left-preconditioned form
 
 $$
 P^{-1}B\mathbf x=P^{-1}\mathbf b.
 $$
 
 `NoPreconditioner` sets $P=I$. `JacobiPreconditioner` uses the finite,
-nonzero diagonal of $B$ as $P$. `IluPreconditioner` uses a threshold
-incomplete-LU factorization of $B$ with the configured drop tolerance and
-fill bound as $P$. These choices change GMRES's Krylov iteration, not the
-system $B\mathbf x=\mathbf b$ or the accepted physical flux. The GMRES and
+nonzero diagonal of $B$ as $P$ and additionally requires every reciprocal to
+be finite and nonzero. These choices change the Krylov iteration, not the
+system $B\mathbf x=\mathbf b$ or the accepted physical flux. The Krylov and
 preconditioner constructions are described by [Barrett et al.
 (1994)](#barrett-et-al-1994).
 
-Morana uses SciPy's left-preconditioned GMRES implementation. It minimizes a
-preconditioned residual, whereas SciPy tests its own termination criterion
-against the original residual
-([SciPy GMRES documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.gmres.html)).
+Morana uses SciPy's left-preconditioned GMRES and BiCGSTAB implementations with
+zero absolute tolerance. GMRES minimizes a preconditioned residual, whereas
+SciPy tests its own termination criterion against the original residual
+([SciPy GMRES documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.gmres.html));
+BiCGSTAB uses stabilized bi-conjugate-gradient recurrences
+([SciPy BiCGSTAB documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.bicgstab.html)).
 
 Morana independently applies its own symmetric true-relative-residual check
-to every direct or GMRES candidate,
+to every direct, GMRES, or BiCGSTAB candidate,
 
 $$
 r_{\mathrm{lin}}(B,\mathbf x,\mathbf b)=

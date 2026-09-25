@@ -106,13 +106,13 @@ def _print_rows(rows: tuple[ComparisonRow, ...]) -> None:
     """Print a stable compact table without making timing an assertion."""
     print(f"Representative MMS refinement level: {REPRESENTATIVE_LEVEL}")
     print(
-        "case          strategy            setup [s]  solve [s]  outer  "
+        "case          strategy                     setup [s]  solve [s]  outer  "
         "inner  final residual  reference error"
     )
     for row in rows:
         outer = "—" if row.outer_iterations is None else str(row.outer_iterations)
         print(
-            f"{row.case:12}  {row.strategy:18}  {row.setup_seconds:9.3f}  "
+            f"{row.case:12}  {row.strategy:27}  {row.setup_seconds:9.3f}  "
             f"{row.solve_seconds:9.3f}  {outer:>5}  {row.inner_iterations:5d}  "
             f"{row.final_residual:14.6e}  {row.reference_error:15.6e}"
         )

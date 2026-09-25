@@ -569,8 +569,8 @@ def _check_outcome(
             expected_size=workload["unknowns"],
         )
     else:
-        if case_id != "gmres_jacobi":
-            raise ValueError("only GMRES/Jacobi may contain GMRES timings")
+        if case_id not in {"gmres_jacobi", "bicgstab_jacobi"}:
+            raise ValueError("only iterative cases may contain iterative timings")
         _check_gmres_solve(
             solve,
             configuration=configuration,

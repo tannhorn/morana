@@ -1,4 +1,4 @@
-"""Worker-local GMRES/Jacobi measurements for the performance study."""
+"""Worker-local iterative measurements for the performance study."""
 
 # This study observes private finite-volume stages. It remains separate from
 # Morana's public solver API.
@@ -18,6 +18,7 @@ from morana.solvers import finite_volume
 
 from studies.finite_volume_performance import measurement
 from studies.finite_volume_performance.cases import (
+    BICGSTAB_JACOBI_CASE_ID,
     GMRES_JACOBI_CASE_ID,
     resolve_case,
 )
@@ -36,7 +37,7 @@ _CPU_FIELDS = tuple(
 
 
 class _Capture:
-    """Collect GMRES setup and solve timings alongside assembled matrices."""
+    """Collect iterative setup and solve timings alongside assembled matrices."""
 
     def __init__(self) -> None:
         self.wall_seconds = {name: 0.0 for name in _TIMING_FIELDS}
@@ -62,7 +63,7 @@ class _Capture:
         return wrapper
 
     def timed_linear(self, name: str, function: Any, *, repeated: bool) -> Any:
-        """Wrap GMRES setup or repeated RHS work with CPU and wall timing."""
+        """Wrap iterative setup or repeated RHS work with CPU and wall timing."""
 
         def wrapper(*args: object, **kwargs: object) -> Any:
             usage_before = resource.getrusage(resource.RUSAGE_SELF)
@@ -91,8 +92,9 @@ def _instrumented_solve(
     capture: _Capture,
     *,
     settings: Any,
+    solve_attribute: str,
 ) -> Any:
-    """Run the GMRES/Jacobi solve with measurement wrappers."""
+    """Run one iterative solve with measurement wrappers."""
     wrappers = {
         "_assemble_loss_matrix": capture.timed_assembly(
             "loss_assembly", finite_volume._assemble_loss_matrix
@@ -100,13 +102,15 @@ def _instrumented_solve(
         "_assemble_fission_matrix": capture.timed_assembly(
             "fission_assembly", finite_volume._assemble_fission_matrix
         ),
-        "_build_gmres_preconditioner": capture.timed_linear(
+        "_build_iterative_preconditioner": capture.timed_linear(
             "linear_solve_setup",
-            finite_volume._build_gmres_preconditioner,
+            finite_volume._build_iterative_preconditioner,
             repeated=False,
         ),
-        "_solve_gmres_system": capture.timed_linear(
-            "linear_rhs_solves", finite_volume._solve_gmres_system, repeated=True
+        solve_attribute: capture.timed_linear(
+            "linear_rhs_solves",
+            getattr(finite_volume, solve_attribute),
+            repeated=True,
         ),
     }
     with ExitStack() as stack:
@@ -130,11 +134,59 @@ def measure_gmres_jacobi(
     shift_inverse_keff: float | None = None,
 ) -> dict[str, object]:
     """Measure one GMRES/Jacobi workload in the current fresh worker."""
+    return _measure_iterative(
+        groups,
+        axial_layers,
+        requested_threads=requested_threads,
+        kind=kind,
+        repetition=repetition,
+        iteration_id=iteration_id,
+        shift_inverse_keff=shift_inverse_keff,
+        case_id=GMRES_JACOBI_CASE_ID,
+        solve_attribute="_solve_gmres_system",
+    )
+
+
+def measure_bicgstab_jacobi(
+    groups: int,
+    axial_layers: int,
+    *,
+    requested_threads: int,
+    kind: str,
+    repetition: int | None,
+    iteration_id: str = "power",
+    shift_inverse_keff: float | None = None,
+) -> dict[str, object]:
+    """Measure one BiCGSTAB/Jacobi workload in the current fresh worker."""
+    return _measure_iterative(
+        groups,
+        axial_layers,
+        requested_threads=requested_threads,
+        kind=kind,
+        repetition=repetition,
+        iteration_id=iteration_id,
+        shift_inverse_keff=shift_inverse_keff,
+        case_id=BICGSTAB_JACOBI_CASE_ID,
+        solve_attribute="_solve_bicgstab_system",
+    )
+
+
+def _measure_iterative(
+    groups: int,
+    axial_layers: int,
+    *,
+    requested_threads: int,
+    kind: str,
+    repetition: int | None,
+    iteration_id: str,
+    shift_inverse_keff: float | None,
+    case_id: str,
+    solve_attribute: str,
+) -> dict[str, object]:
+    """Measure one checked iterative workload in the current fresh worker."""
     if kind not in {"measurement", "profile"}:
         raise ValueError("kind must be 'measurement' or 'profile'")
-    settings, iteration = resolve_case(
-        GMRES_JACOBI_CASE_ID, iteration_id, shift_inverse_keff
-    )
+    settings, iteration = resolve_case(case_id, iteration_id, shift_inverse_keff)
     capture = _Capture()
     profile = cProfile.Profile() if kind == "profile" else None
 
@@ -142,7 +194,12 @@ def measure_gmres_jacobi(
         try:
             if profile is not None:
                 profile.enable()
-            result = _instrumented_solve(configuration, capture, settings=settings)
+            result = _instrumented_solve(
+                configuration,
+                capture,
+                settings=settings,
+                solve_attribute=solve_attribute,
+            )
         finally:
             if profile is not None:
                 profile.disable()
@@ -152,14 +209,14 @@ def measure_gmres_jacobi(
     result, common = measurement._measure_worker_call(groups, axial_layers, solve)
     report = result.execution_report
     if capture.rhs_solve_count != report.iterations:
-        raise RuntimeError("GMRES RHS-solve count does not match outer iterations")
+        raise RuntimeError("iterative RHS-solve count does not match outer iterations")
     reported_krylov = [item.linear_solve.iterations for item in report.outer_iterations]
     if capture.krylov_iterations != reported_krylov:
         raise RuntimeError("captured Krylov counts do not match execution report")
     return measurement._successful_outcome(
         groups,
         axial_layers,
-        GMRES_JACOBI_CASE_ID,
+        case_id,
         iteration=iteration,
         requested_threads=requested_threads,
         kind=kind,

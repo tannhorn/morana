@@ -19,6 +19,7 @@ from studies.finite_volume_performance import (
     workload,
 )
 from studies.finite_volume_performance.cases import (
+    BICGSTAB_JACOBI_CASE_ID,
     DIRECT_CASE_ID,
     GMRES_JACOBI_CASE_ID,
     WIELANDT_ITERATION_ID,
@@ -61,6 +62,19 @@ def gmres_observation() -> dict[str, object]:
         6,
         2,
         case_id=GMRES_JACOBI_CASE_ID,
+        requested_threads=1,
+        kind="measurement",
+        repetition=0,
+    )
+
+
+@pytest.fixture(scope="module")
+def bicgstab_observation() -> dict[str, object]:
+    """Return one BiCGSTAB/Jacobi measurement."""
+    return orchestration.launch_outcome(
+        6,
+        2,
+        case_id=BICGSTAB_JACOBI_CASE_ID,
         requested_threads=1,
         kind="measurement",
         repetition=0,
@@ -184,6 +198,20 @@ def test_gmres_jacobi_measurement_records_its_retained_diagnostics(
     """GMRES/Jacobi records setup, Krylov, and numerical acceptance evidence."""
     assert gmres_observation["status"] == "success"
     solve = gmres_observation["solve"]
+    assert solve["factorization"] is None
+    assert len(solve["krylov_iterations_by_outer"]) == solve["outer_iterations"]
+    assert solve["total_krylov_iterations"] == sum(solve["krylov_iterations_by_outer"])
+    assert solve["timings_seconds"]["linear_solve_setup"] >= 0.0
+    assert solve["timings_seconds"]["linear_rhs_solves"] >= 0.0
+    assert solve["numerical_checks"]["final_keff_relative_residual"] <= 1.0e-10
+
+
+def test_bicgstab_jacobi_measurement_records_its_retained_diagnostics(
+    bicgstab_observation: dict[str, object],
+) -> None:
+    """BiCGSTAB/Jacobi records setup and numerical acceptance evidence."""
+    assert bicgstab_observation["status"] == "success"
+    solve = bicgstab_observation["solve"]
     assert solve["factorization"] is None
     assert len(solve["krylov_iterations_by_outer"]) == solve["outer_iterations"]
     assert solve["total_krylov_iterations"] == sum(solve["krylov_iterations_by_outer"])
@@ -342,16 +370,18 @@ def test_factor_views_are_inspected_after_peak_rss_is_frozen(monkeypatch) -> Non
 
 
 def test_study_modes_and_cases_are_exact() -> None:
-    """Smoke and the two single-thread baselines have fixed definitions."""
+    """Smoke and the three single-thread baselines have fixed definitions."""
     smoke = runner._plan("smoke")
     assert smoke.output_name == "smoke.json"
     assert [request.record for request in smoke.requests] == [False, True, True]
     assert {request.case_id for request in smoke.requests} == {DIRECT_CASE_ID}
     direct = runner._plan("baseline")
     gmres = runner._plan("baseline", GMRES_JACOBI_CASE_ID)
+    bicgstab = runner._plan("baseline", BICGSTAB_JACOBI_CASE_ID)
     assert direct.output_name == "baseline_direct.json"
     assert gmres.output_name == "baseline_gmres_jacobi.json"
-    assert len(direct.requests) == len(gmres.requests) == 60
+    assert bicgstab.output_name == "baseline_bicgstab_jacobi.json"
+    assert len(direct.requests) == len(gmres.requests) == len(bicgstab.requests) == 60
     assert {request.requested_threads for request in gmres.requests} == {1}
     expected_warmup = runner.WorkerRequest(6, 2, DIRECT_CASE_ID, record=False)
     assert direct.requests[::5] == (expected_warmup,) * 12
