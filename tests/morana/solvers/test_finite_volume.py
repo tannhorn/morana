@@ -1450,7 +1450,99 @@ def test_keff_gmres_reuses_its_ilu_preconditioner_within_one_call(
         report.linear_solve.preconditioner is linear_solve.preconditioner
         for report in reports
     )
-    assert all(1 <= report.linear_solve.iterations <= 10 for report in reports)
+    assert all(0 <= report.linear_solve.iterations <= 10 for report in reports)
+
+
+@pytest.mark.parametrize(
+    "eigenvalue_iteration",
+    [PowerIterationSettings(), WielandtShiftSettings(shift_inverse_keff=0.5)],
+    ids=["ordinary", "fixed_wielandt"],
+)
+def test_gmres_criticality_continuation_uses_prior_cleaned_inner_solution(
+    monkeypatch: pytest.MonkeyPatch,
+    eigenvalue_iteration: PowerIterationSettings | WielandtShiftSettings,
+) -> None:
+    """Each later GMRES solve starts from its prior cleaned inner solution."""
+    configuration = _snapshot_keff_configuration()
+    settings = KeffSettings(
+        inner_linear_solve=GmresLinearSolveSettings(
+            relative_residual_tolerance=1.0e-12,
+            max_krylov_iterations=100,
+            restart=10,
+            preconditioner=JacobiPreconditioner(),
+        ),
+        eigenvalue_iteration=eigenvalue_iteration,
+    )
+    problem = finite_volume_module._prepare_keff_problem(
+        configuration.snapshot(), settings, FissionSourceNormalization(rate=1.0)
+    )
+    initial_guesses: list[np.ndarray | None] = []
+    cleaned_inner_solutions: list[np.ndarray] = []
+    original_solve = finite_volume_module._solve_gmres_system
+    original_clean = finite_volume_module._clean_keff_flux
+
+    def capture_initial_guess(*args, **kwargs):
+        """Record guesses without changing the selected GMRES solve."""
+        guess = kwargs.get("initial_guess")
+        initial_guesses.append(None if guess is None else np.array(guess, copy=True))
+        return original_solve(*args, **kwargs)
+
+    def capture_cleaned_inner_solution(*args, **kwargs):
+        """Record each cleaned candidate before fission-source normalization."""
+        candidate = original_clean(*args, **kwargs)
+        cleaned_inner_solutions.append(np.array(candidate, copy=True))
+        return candidate
+
+    monkeypatch.setattr(
+        finite_volume_module, "_solve_gmres_system", capture_initial_guess
+    )
+    monkeypatch.setattr(
+        finite_volume_module, "_clean_keff_flux", capture_cleaned_inner_solution
+    )
+    finite_volume_module._iterate_keff(problem)
+
+    assert len(initial_guesses) == len(cleaned_inner_solutions) > 1
+    assert initial_guesses[0] is None
+    for guess, prior_candidate in zip(
+        initial_guesses[1:], cleaned_inner_solutions[:-1], strict=True
+    ):
+        np.testing.assert_array_equal(guess, prior_candidate)
+
+
+def test_noncriticality_and_direct_solves_do_not_receive_continuation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fixed-source GMRES and direct criticality never receive an initial guess."""
+    gmres_guesses: list[np.ndarray | None] = []
+    direct_guesses: list[np.ndarray | None] = []
+    original_gmres = finite_volume_module._solve_gmres_system
+    original_prepared = finite_volume_module._solve_prepared_linear_system
+
+    def capture_gmres_guess(*args, **kwargs):
+        gmres_guesses.append(kwargs.get("initial_guess"))
+        return original_gmres(*args, **kwargs)
+
+    def capture_direct_guess(*args, **kwargs):
+        direct_guesses.append(kwargs.get("initial_guess"))
+        return original_prepared(*args, **kwargs)
+
+    monkeypatch.setattr(
+        finite_volume_module, "_solve_gmres_system", capture_gmres_guess
+    )
+    solve_fixed_source(
+        _snapshot_fixed_source_configuration(),
+        FixedSourceSettings(
+            linear_solve=GmresLinearSolveSettings(relative_residual_tolerance=1.0e-12)
+        ),
+    )
+    assert gmres_guesses == [None]
+
+    monkeypatch.setattr(
+        finite_volume_module, "_solve_prepared_linear_system", capture_direct_guess
+    )
+    solve_keff(_snapshot_keff_configuration(), FissionSourceNormalization(rate=1.0))
+    assert direct_guesses
+    assert all(guess is None for guess in direct_guesses)
 
 
 @pytest.mark.parametrize(

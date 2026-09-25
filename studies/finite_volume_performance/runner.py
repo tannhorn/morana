@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable
 
+from studies.finite_volume_performance.cases import (
+    CASE_IDS,
+    DIRECT_CASE_ID,
+    iteration_record,
+)
 from studies.finite_volume_performance.orchestration import (
     DEFAULT_ADDRESS_SPACE_LIMIT_BYTES,
     DEFAULT_TIMEOUT_SECONDS,
@@ -26,6 +31,8 @@ _BASELINE_WARMUP = (6, 2)
 
 
 @dataclass(frozen=True)
+# The request deliberately carries all independently persisted outcome axes.
+# pylint: disable-next=too-many-instance-attributes
 class WorkerRequest:
     """Describe one fresh worker and whether its outcome is recorded."""
 
@@ -33,9 +40,26 @@ class WorkerRequest:
     axial_layers: int
     case_id: str
     requested_threads: int = 1
+    iteration_id: str = "power"
+    shift_inverse_keff: float | None = None
     kind: str = "measurement"
     repetition: int | None = None
     record: bool = True
+
+
+@dataclass(frozen=True)
+class ExecutionGroup:
+    """Own one workload's warm-up and ordered recorded workers."""
+
+    warmup: WorkerRequest | None
+    measurements: tuple[WorkerRequest, ...]
+
+    @property
+    def requests(self) -> tuple[WorkerRequest, ...]:
+        """Return the prerequisite followed by recorded workers."""
+        if self.warmup is None:
+            return self.measurements
+        return (self.warmup,) + self.measurements
 
 
 @dataclass(frozen=True)
@@ -44,108 +68,68 @@ class RunPlan:
 
     mode: str
     output_name: str
-    requests: tuple[WorkerRequest, ...]
+    groups: tuple[ExecutionGroup, ...]
+
+    @property
+    def requests(self) -> tuple[WorkerRequest, ...]:
+        """Return all workers in execution order for workload provenance."""
+        return tuple(request for group in self.groups for request in group.requests)
 
 
 def _resolve_case_id(case_id: str | None) -> str:
     """Resolve and validate the selected baseline case."""
-    # pylint: disable-next=import-outside-toplevel
-    from studies.finite_volume_performance.cases import CASE_IDS, DIRECT_CASE_ID
-
     resolved = DIRECT_CASE_ID if case_id is None else case_id
     if resolved not in CASE_IDS:
         raise ValueError(f"--solver must be one of {CASE_IDS}")
     return resolved
 
 
-def _cell_requests(
-    groups: int,
-    axial_layers: int,
-    case_id: str,
-    *,
-    requested_threads: int = 1,
-    repetitions: int = 3,
-    warmup: bool = True,
-    profile: bool = False,
-) -> tuple[WorkerRequest, ...]:
-    """Return the standard fresh-worker protocol for one measured cell."""
-    requests = []
-    if warmup:
-        requests.append(
-            WorkerRequest(
-                groups,
-                axial_layers,
-                case_id,
-                requested_threads=requested_threads,
-                record=False,
-            )
-        )
-    requests.extend(
-        WorkerRequest(
-            groups,
-            axial_layers,
-            case_id,
-            requested_threads=requested_threads,
-            repetition=repetition,
-        )
-        for repetition in range(repetitions)
-    )
-    if profile:
-        requests.append(
-            WorkerRequest(
-                groups,
-                axial_layers,
-                case_id,
-                requested_threads=requested_threads,
-                kind="profile",
-            )
-        )
-    return tuple(requests)
-
-
-def _baseline_requests(case_id: str) -> tuple[WorkerRequest, ...]:
-    """Return the complete Cartesian baseline protocol for one solver case."""
-    # pylint: disable-next=import-outside-toplevel
-    from studies.finite_volume_performance.workload import baseline_workloads
-
-    requests = []
-    for groups, layers in baseline_workloads():
-        requests.append(WorkerRequest(*_BASELINE_WARMUP, case_id, record=False))
-        requests.extend(
-            _cell_requests(
-                groups,
-                layers,
-                case_id,
-                warmup=False,
-                profile=True,
-            )
-        )
-    return tuple(requests)
-
-
-def _selected_requests(
+def _execution_groups(
     workloads: tuple[tuple[int, int], ...],
     case_id: str,
     warmup: tuple[int, int] | None,
-) -> tuple[WorkerRequest, ...]:
-    """Return one recorded worker per selected workload, with optional warm-ups."""
-    # pylint: disable-next=import-outside-toplevel
-    from studies.finite_volume_performance.workload import GROUP_COUNTS
+    *,
+    repetitions: int = 1,
+    profile: bool = False,
+    iteration_id: str = "power",
+    shift_inverse_keff: float | None = None,
+) -> tuple[ExecutionGroup, ...]:
+    """Build the same checked worker protocol for every selected workload."""
+    # pylint: disable-next=import-outside-toplevel,protected-access
+    from studies.finite_volume_performance.workload import (
+        _require_group_count,
+        _require_axial_layers,
+    )
 
+    iteration_record(iteration_id, shift_inverse_keff)
     if len(set(workloads)) != len(workloads):
         raise ValueError("selected workloads must be unique")
-    dimensions = workloads + (() if warmup is None else (warmup,))
-    for groups, axial_layers in dimensions:
-        if groups not in GROUP_COUNTS:
-            raise ValueError(f"groups must be one of {GROUP_COUNTS}")
-        if axial_layers < 1:
-            raise ValueError("axial layers must be positive")
-    requests = []
-    for workload in workloads:
-        if warmup is not None:
-            requests.append(WorkerRequest(*warmup, case_id, record=False))
-        requests.append(WorkerRequest(*workload, case_id))
-    return tuple(requests)
+    if isinstance(repetitions, bool) or not isinstance(repetitions, int):
+        raise TypeError("selected repetitions must be an integer")
+    if repetitions < 1:
+        raise ValueError("selected repetitions must be positive")
+    for groups, layers in workloads + (() if warmup is None else (warmup,)):
+        _require_group_count(groups)
+        _require_axial_layers(layers)
+    warmup_request = (
+        None if warmup is None else WorkerRequest(*warmup, case_id, record=False)
+    )
+    result = []
+    for groups, layers in workloads:
+        request = WorkerRequest(
+            groups,
+            layers,
+            case_id,
+            iteration_id=iteration_id,
+            shift_inverse_keff=shift_inverse_keff,
+        )
+        measurements = tuple(
+            replace(request, repetition=index) for index in range(repetitions)
+        )
+        if profile:
+            measurements += (replace(request, kind="profile"),)
+        result.append(ExecutionGroup(warmup_request, measurements))
+    return tuple(result)
 
 
 def _plan(
@@ -155,26 +139,49 @@ def _plan(
     workloads: tuple[tuple[int, int], ...] = (),
     warmup: tuple[int, int] | None = None,
     output_name: str | None = None,
+    repetitions: int = 1,
+    profile: bool = False,
+    iteration_id: str = "power",
+    shift_inverse_keff: float | None = None,
 ) -> RunPlan:
     """Resolve one CLI mode into an explicit immutable execution plan."""
+    selected_options = (
+        workloads,
+        warmup,
+        output_name,
+        repetitions != 1,
+        profile,
+        iteration_id != "power",
+        shift_inverse_keff is not None,
+    )
     if mode == "smoke":
         if solver_case is not None:
             raise ValueError("--solver applies only to baseline or selected mode")
-        if workloads or warmup is not None or output_name is not None:
+        if any(selected_options):
             raise ValueError("workload selection applies only to selected mode")
-        # pylint: disable-next=import-outside-toplevel
-        from studies.finite_volume_performance.cases import DIRECT_CASE_ID
-
         return RunPlan(
             mode,
             "smoke.json",
-            _cell_requests(6, 2, DIRECT_CASE_ID, repetitions=1, profile=True),
+            _execution_groups(((6, 2),), DIRECT_CASE_ID, (6, 2), profile=True),
         )
     if mode == "baseline":
-        if workloads or warmup is not None or output_name is not None:
+        if any(selected_options):
             raise ValueError("workload selection applies only to selected mode")
         case_id = _resolve_case_id(solver_case)
-        return RunPlan(mode, f"baseline_{case_id}.json", _baseline_requests(case_id))
+        # pylint: disable-next=import-outside-toplevel
+        from studies.finite_volume_performance.workload import baseline_workloads
+
+        return RunPlan(
+            mode,
+            f"baseline_{case_id}.json",
+            _execution_groups(
+                tuple(baseline_workloads()),
+                case_id,
+                _BASELINE_WARMUP,
+                repetitions=3,
+                profile=True,
+            ),
+        )
     if mode == "selected":
         if not workloads:
             raise ValueError("selected mode requires at least one workload")
@@ -186,7 +193,15 @@ def _plan(
         return RunPlan(
             mode,
             output_name,
-            _selected_requests(workloads, case_id, warmup),
+            _execution_groups(
+                workloads,
+                case_id,
+                warmup,
+                repetitions=repetitions,
+                profile=profile,
+                iteration_id=iteration_id,
+                shift_inverse_keff=shift_inverse_keff,
+            ),
         )
     raise ValueError("mode must be 'smoke', 'baseline', or 'selected'")
 
@@ -197,63 +212,43 @@ def _request_id(request: WorkerRequest) -> str:
         request.groups,
         request.axial_layers,
         request.case_id,
+        iteration_record(request.iteration_id, request.shift_inverse_keff),
         requested_threads=request.requested_threads,
         kind=request.kind,
         repetition=request.repetition,
     )
 
 
-def _cell(request: WorkerRequest) -> tuple[str, int, int, int]:
-    """Return the terminal-failure cell for one request."""
-    return (
-        request.case_id,
-        request.groups,
-        request.axial_layers,
-        request.requested_threads,
-    )
-
-
-def _pending_requests(
-    requests: tuple[WorkerRequest, ...], outcomes: Iterable[dict[str, object]]
-) -> tuple[WorkerRequest, ...]:
-    """Return missing work and only warm-ups preceding missing measurements."""
-    by_id = {_request_id(request): request for request in requests}
+def _pending_groups(
+    groups: tuple[ExecutionGroup, ...], outcomes: Iterable[dict[str, object]]
+) -> tuple[ExecutionGroup, ...]:
+    """Resume incomplete groups with their warm-ups, preserving terminal failures."""
     recorded = {str(outcome["outcome_id"]): outcome for outcome in outcomes}
-    unexpected = set(recorded) - set(by_id)
+    expected = {_request_id(request) for group in groups for request in group.requests}
+    unexpected = set(recorded) - expected
     if unexpected:
         raise ValueError(
             f"cannot resume with unexpected outcomes: {sorted(unexpected)}"
         )
-    failed_cells = {
-        _cell(by_id[outcome_id])
-        for outcome_id, outcome in recorded.items()
+    failed = {
+        identifier
+        for identifier, outcome in recorded.items()
         if outcome["status"] == "failed"
     }
-    missing = {
-        request_id
-        for request_id, request in by_id.items()
-        if request.record
-        and _cell(request) not in failed_cells
-        and request_id not in recorded
-    }
     pending = []
-    for index, request in enumerate(requests):
-        if _cell(request) in failed_cells:
+    for group in groups:
+        identifiers = {_request_id(request) for request in group.measurements}
+        if group.warmup is not None:
+            identifiers.add(_request_id(group.warmup))
+        if identifiers & failed:
             continue
-        if request.record:
-            if _request_id(request) in missing:
-                pending.append(request)
-            continue
-        following = []
-        for candidate in requests[index + 1 :]:
-            if not candidate.record:
-                break
-            following.append(candidate)
-        if any(
-            candidate.kind == "measurement" and _request_id(candidate) in missing
-            for candidate in following
-        ):
-            pending.append(request)
+        missing = tuple(
+            request
+            for request in group.measurements
+            if _request_id(request) not in recorded
+        )
+        if missing:
+            pending.append(replace(group, measurements=missing))
     return tuple(pending)
 
 
@@ -287,15 +282,19 @@ def _print_outcome(outcome: dict[str, object]) -> None:
     )
 
 
-def _print_summaries(plan: RunPlan, outcomes: list[dict[str, object]]) -> None:
-    """Print repeated-run summaries appropriate to the resolved plan."""
+def _print_summaries(outcomes: list[dict[str, object]]) -> None:
+    """Print summaries whenever enough repeated measurements are available."""
     summaries = summarize_outcomes(outcomes)
-    if plan.mode == "baseline":
-        print("Baseline medians:")
-        for summary in summaries:
-            wall = summary["wall_time_seconds"]["median"]
-            peak = summary["peak_rss_bytes"]["median"] / 1024**2
-            print(f"  {summary['workload_id']}: wall={wall:.3f} s, peak={peak:.1f} MiB")
+    if summaries:
+        print("Measurement medians:")
+    for summary in summaries:
+        wall = summary["wall_time_seconds"]["median"]
+        peak = summary["peak_rss_bytes"]["median"] / 1024**2
+        print(
+            f"  {summary['workload_id']}, {summary['case_id']}, "
+            f"{summary['eigenvalue_iteration']}: "
+            f"wall={wall:.3f} s, peak={peak:.1f} MiB"
+        )
 
 
 def run(
@@ -309,6 +308,10 @@ def run(
     workloads: tuple[tuple[int, int], ...] = (),
     warmup: tuple[int, int] | None = None,
     output_name: str | None = None,
+    repetitions: int = 1,
+    profile: bool = False,
+    iteration_id: str = "power",
+    shift_inverse_keff: float | None = None,
 ) -> Path:
     """Execute one maintained mode and return its checked JSON path."""
     plan = _plan(
@@ -317,6 +320,10 @@ def run(
         workloads=workloads,
         warmup=warmup,
         output_name=output_name,
+        repetitions=repetitions,
+        profile=profile,
+        iteration_id=iteration_id,
+        shift_inverse_keff=shift_inverse_keff,
     )
     workload_records = _workloads(plan.requests)
     output_path = output_dir / plan.output_name
@@ -334,34 +341,40 @@ def run(
             output_path,
             build_document(workloads=workload_records, outcomes=[]),
         )
-    pending = _pending_requests(plan.requests, outcomes)
+    pending = _pending_groups(plan.groups, outcomes)
     disposition = "Resuming" if resume else "Running"
     print(f"{disposition} many-group performance mode: {plan.mode}")
-    for index, request in enumerate(pending, start=1):
-        disposition = "recorded" if request.record else "warm-up"
-        print(
-            f"[{index}/{len(pending)}] {request.case_id}, g={request.groups}, "
-            f"z={request.axial_layers}, threads={request.requested_threads}, "
-            f"{request.kind}, {disposition}"
-        )
-        outcome = launch_outcome(
-            request.groups,
-            request.axial_layers,
-            case_id=request.case_id,
-            requested_threads=request.requested_threads,
-            kind=request.kind,
-            repetition=request.repetition,
-            timeout_seconds=timeout_seconds,
-            address_space_limit_bytes=address_space_limit_bytes,
-        )
-        if request.record or outcome["status"] == "failed":
-            outcomes.append(outcome)
-            write_document(
-                output_path,
-                build_document(workloads=workload_records, outcomes=outcomes),
+    while pending:
+        group = pending[0]
+        for request in group.requests:
+            disposition = "recorded" if request.record else "warm-up"
+            print(
+                f"  {request.case_id}, g={request.groups}, "
+                f"z={request.axial_layers}, {request.kind}, {disposition}"
             )
-            _print_outcome(outcome)
-    _print_summaries(plan, outcomes)
+            outcome = launch_outcome(
+                request.groups,
+                request.axial_layers,
+                case_id=request.case_id,
+                iteration_id=request.iteration_id,
+                shift_inverse_keff=request.shift_inverse_keff,
+                requested_threads=request.requested_threads,
+                kind=request.kind,
+                repetition=request.repetition,
+                timeout_seconds=timeout_seconds,
+                address_space_limit_bytes=address_space_limit_bytes,
+            )
+            if request.record or outcome["status"] == "failed":
+                outcomes.append(outcome)
+                write_document(
+                    output_path,
+                    build_document(workloads=workload_records, outcomes=outcomes),
+                )
+                _print_outcome(outcome)
+            if outcome["status"] == "failed":
+                break
+        pending = _pending_groups(plan.groups, outcomes)
+    _print_summaries(outcomes)
     print(f"Checked outcomes: {output_path}")
     return output_path
 
@@ -374,6 +387,17 @@ def parse_args() -> argparse.Namespace:
         choices=("smoke", "baseline", "selected"),
         nargs="?",
         default="smoke",
+    )
+    parser.add_argument(
+        "--iteration",
+        choices=("power", "wielandt"),
+        default="power",
+        help="criticality operator for selected mode (default: power)",
+    )
+    parser.add_argument(
+        "--shift-inverse-keff",
+        type=float,
+        help="explicit fixed inverse-keff shift for selected Wielandt runs",
     )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
@@ -401,6 +425,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-name",
         help="JSON filename required by selected mode",
+    )
+    parser.add_argument(
+        "--repetitions",
+        type=int,
+        default=1,
+        help="recorded measurements per selected workload (default: 1)",
+    )
+    parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="also record one function profile per selected workload",
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -435,4 +470,8 @@ def main() -> None:
         workloads=tuple(tuple(item) for item in arguments.workload),
         warmup=None if arguments.warmup is None else tuple(arguments.warmup),
         output_name=arguments.output_name,
+        repetitions=arguments.repetitions,
+        profile=arguments.profile,
+        iteration_id=arguments.iteration,
+        shift_inverse_keff=arguments.shift_inverse_keff,
     )

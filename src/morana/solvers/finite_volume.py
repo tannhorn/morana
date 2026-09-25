@@ -447,11 +447,17 @@ def _keff_inner_solve_matrix(
 def _iterate_keff(
     problem: _KeffProblem,
 ) -> tuple[np.ndarray, KeffSolveReport]:
-    """Return fission-normalized flux and report from the selected policy."""
+    """Return fission-normalized flux and report from the selected policy.
+
+    GMRES inner solves after the first use the preceding cleaned,
+    pre-normalization inner solution as their starting guess. The state exists
+    only in this call and is never used for direct or fixed-source solves.
+    """
     flux = np.ones(problem.loss_matrix.shape[0], dtype=float)
     flux /= float(np.dot(problem.fission_production_functional, flux))
     previous_keff = 1.0
     outer_iterations = []
+    previous_cleaned_inner_solution: np.ndarray | None = None
 
     settings = problem.settings
     solve_label = _KEFF_ITERATION_SOLVE_LABELS[settings.eigenvalue_iteration.kind]
@@ -462,8 +468,23 @@ def _iterate_keff(
             fission_source,
             problem.inner_linear_solve,
             solve_label,
+            initial_guess=(
+                previous_cleaned_inner_solution
+                if isinstance(
+                    problem.inner_linear_solve.linear_solve,
+                    GmresLinearSolveSettings,
+                )
+                else None
+            ),
         )
         candidate = _clean_keff_flux(candidate, settings, solve_label)
+        if isinstance(
+            problem.inner_linear_solve.linear_solve, GmresLinearSolveSettings
+        ):
+            # Save before fission-source normalization.  A new owned array
+            # prevents later in-place normalization from changing the next
+            # inner solve's starting vector.
+            previous_cleaned_inner_solution = np.array(candidate, copy=True)
         _, linear_relative_residual = _require_linear_residual(
             problem.inner_solve_matrix,
             candidate,
@@ -624,9 +645,13 @@ def _solve_prepared_linear_system(
     rhs: np.ndarray,
     prepared: _PreparedLinearSolve,
     solve_name: str,
+    *,
+    initial_guess: np.ndarray | None = None,
 ) -> tuple[np.ndarray, int]:
     """Execute one criticality inner solve with per-call reusable setup."""
     if isinstance(prepared.linear_solve, DirectLinearSolveSettings):
+        if initial_guess is not None:
+            raise RuntimeError("direct criticality solve cannot use an initial guess")
         if prepared.factorization is None:
             raise RuntimeError("direct criticality solve is missing its factorization")
         return (
@@ -639,6 +664,7 @@ def _solve_prepared_linear_system(
         prepared.linear_solve,
         prepared.preconditioner,
         solve_name,
+        initial_guess=initial_guess,
     )
 
 
@@ -688,9 +714,24 @@ def _solve_gmres_system(
     settings: GmresLinearSolveSettings,
     preconditioner: LinearOperator | None,
     solve_name: str,
+    *,
+    initial_guess: np.ndarray | None = None,
 ) -> tuple[np.ndarray, int]:
-    """Run restarted GMRES from zero and return its completed iteration count."""
+    """Run restarted GMRES and return its completed iteration count.
+
+    Fixed-source execution starts from zero. Criticality supplies the prior
+    cleaned inner solution after its first GMRES solve. A supplied initial
+    guess is checked and copied before it reaches SciPy so mutable caller state
+    cannot be retained or altered.
+    """
     krylov_iterations = 0
+    if initial_guess is None:
+        starting_flux = np.zeros_like(rhs)
+    else:
+        starting_flux = np.asarray(initial_guess, dtype=float)
+        if starting_flux.shape != rhs.shape or not np.all(np.isfinite(starting_flux)):
+            raise ValueError(f"{solve_name} GMRES initial guess is invalid")
+        starting_flux = np.array(starting_flux, copy=True)
 
     def count_iteration(_residual: float) -> None:
         """Record one inner Krylov iteration reported by SciPy."""
@@ -701,7 +742,7 @@ def _solve_gmres_system(
         flux, status = gmres(
             matrix,
             rhs,
-            x0=np.zeros_like(rhs),
+            x0=starting_flux,
             rtol=settings.relative_residual_tolerance,
             atol=0.0,
             restart=settings.restart,

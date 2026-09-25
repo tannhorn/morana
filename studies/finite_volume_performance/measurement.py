@@ -29,7 +29,11 @@ from morana.solvers import finite_volume
 
 from studies.finite_volume_performance.orchestration import (
     THREAD_ENVIRONMENT_VARIABLES,
-    outcome_identifier,
+    outcome_fields,
+)
+from studies.finite_volume_performance.cases import (
+    DIRECT_CASE_ID,
+    resolve_case,
 )
 from studies.finite_volume_performance.results import STAGE_NAMES
 from studies.finite_volume_performance.workload import (
@@ -37,7 +41,6 @@ from studies.finite_volume_performance.workload import (
     FROZEN_MATERIAL_FAMILY_DIGESTS,
     FROZEN_PLACEMENT_DIGESTS,
     build_configuration,
-    solve_settings,
 )
 
 _EXPECTED_CALLS = {
@@ -222,7 +225,9 @@ class _Recorder:
             )
 
 
-def _instrumented_solve(configuration: Any, recorder: _Recorder) -> Result:
+def _instrumented_solve(
+    configuration: Any, recorder: _Recorder, settings: Any
+) -> Result:
     """Call public ``solve_keff`` while observing worker-local private stages."""
     original_balance = KeffBalance
     original_result = Result
@@ -359,7 +364,7 @@ def _instrumented_solve(configuration: Any, recorder: _Recorder) -> Result:
         return finite_volume.solve_keff(
             configuration,
             FissionSourceNormalization(rate=1.0),
-            solve_settings(),
+            settings,
         )
 
 
@@ -452,31 +457,59 @@ def _measure_worker_call(
     }
 
 
-def _worker_fields(
-    common: dict[str, object], solve_fields: dict[str, object]
+def _successful_outcome(
+    groups: int,
+    axial_layers: int,
+    case_id: str,
+    *,
+    iteration: dict[str, object],
+    requested_threads: int,
+    kind: str,
+    repetition: int | None,
+    common: dict[str, object],
+    solve_fields: dict[str, object],
+    profile: cProfile.Profile | None,
 ) -> dict[str, object]:
-    """Combine shared worker measurements with strategy-specific solve fields."""
+    """Combine the common identity and measurements for a successful worker."""
     return {
+        **outcome_fields(
+            groups,
+            axial_layers,
+            case_id,
+            iteration=iteration,
+            requested_threads=requested_threads,
+            kind=kind,
+            repetition=repetition,
+        ),
+        "status": "success",
         "started_at_utc": common["started_at_utc"],
         "repository": common["repository"],
         "environment": common["environment"],
         "configuration": common["configuration"],
         "solve": {**common["solve"], **solve_fields},
+        "profile": (
+            None
+            if profile is None
+            else {"profiler": "cProfile", "entries": _profile_entries(profile)}
+        ),
+        "failure": None,
     }
 
 
-def measure_workload(
+def measure_direct(
     groups: int,
     axial_layers: int,
     *,
-    case_id: str,
     requested_threads: int,
     kind: str,
     repetition: int | None,
+    iteration_id: str = "power",
+    shift_inverse_keff: float | None = None,
 ) -> dict[str, object]:
     """Measure one workload in the current fresh worker process."""
     if kind not in {"measurement", "profile"}:
         raise ValueError("kind must be 'measurement' or 'profile'")
+    settings, iteration = resolve_case(DIRECT_CASE_ID, iteration_id, shift_inverse_keff)
     recorder = _Recorder()
     profile = cProfile.Profile() if kind == "profile" else None
 
@@ -484,7 +517,7 @@ def measure_workload(
         try:
             if profile is not None:
                 profile.enable()
-            result = _instrumented_solve(configuration, recorder)
+            result = _instrumented_solve(configuration, recorder, settings)
         finally:
             if profile is not None:
                 profile.disable()
@@ -509,43 +542,25 @@ def measure_workload(
         raise RuntimeError(
             "direct RHS-solve count does not match completed outer iterations"
         )
-    outcome_id = outcome_identifier(
+    return _successful_outcome(
         groups,
         axial_layers,
-        case_id,
+        DIRECT_CASE_ID,
+        iteration=iteration,
         requested_threads=requested_threads,
         kind=kind,
         repetition=repetition,
+        common=common,
+        solve_fields={
+            "rss_checkpoints_bytes": recorder.checkpoints,
+            "stages_seconds": stages,
+            "matrices": recorder.matrices,
+            "factorization": factorization_record,
+            "outer_iterations": report.iterations,
+            "numerical_checks": _numerical_record(result),
+        },
+        profile=profile,
     )
-    return {
-        "outcome_id": outcome_id,
-        "case_id": case_id,
-        "workload_id": f"g{groups}-z{axial_layers}",
-        "kind": kind,
-        "repetition": repetition,
-        "requested_threads": requested_threads,
-        **_worker_fields(
-            common,
-            {
-                "rss_checkpoints_bytes": recorder.checkpoints,
-                "stages_seconds": stages,
-                "matrices": recorder.matrices,
-                "factorization": factorization_record,
-                "outer_iterations": report.iterations,
-                "numerical_checks": _numerical_record(result),
-            },
-        ),
-        "profile": (
-            None
-            if profile is None
-            else {
-                "profiler": "cProfile",
-                "entries": _profile_entries(profile),
-            }
-        ),
-        "status": "success",
-        "failure": None,
-    }
 
 
 def workload_record(groups: int, axial_layers: int) -> dict[str, object]:

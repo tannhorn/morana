@@ -1,6 +1,6 @@
-"""Tests for many-group fresh-process measurements and records."""
-
 # pylint: disable=import-error,protected-access,redefined-outer-name
+
+"""Tests for many-group fresh-process measurements and records."""
 
 from __future__ import annotations
 
@@ -21,7 +21,10 @@ from studies.finite_volume_performance import (
 from studies.finite_volume_performance.cases import (
     DIRECT_CASE_ID,
     GMRES_JACOBI_CASE_ID,
+    WIELANDT_ITERATION_ID,
+    iteration_record,
     records,
+    resolve_case,
 )
 
 
@@ -108,6 +111,30 @@ def test_launcher_rejects_invalid_resource_limits(
         )
 
 
+def test_launcher_requires_a_complete_iteration_policy() -> None:
+    """Incomplete or inconsistent policies fail before a worker is created."""
+    with pytest.raises(ValueError, match="requires an explicit fixed shift"):
+        orchestration.launch_outcome(
+            6,
+            2,
+            case_id=DIRECT_CASE_ID,
+            iteration_id=WIELANDT_ITERATION_ID,
+            requested_threads=1,
+            kind="measurement",
+            repetition=0,
+        )
+    with pytest.raises(ValueError, match="only to Wielandt"):
+        orchestration.launch_outcome(
+            6,
+            2,
+            case_id=DIRECT_CASE_ID,
+            shift_inverse_keff=0.95,
+            requested_threads=1,
+            kind="measurement",
+            repetition=0,
+        )
+
+
 def test_launcher_terminates_and_reaps_timed_out_worker() -> None:
     """A deadline kills the isolated worker rather than leaving it running."""
     outcome = orchestration.launch_outcome(
@@ -165,6 +192,19 @@ def test_gmres_jacobi_measurement_records_its_retained_diagnostics(
     assert solve["numerical_checks"]["final_keff_relative_residual"] <= 1.0e-10
 
 
+def test_checked_document_accepts_a_zero_iteration_continued_inner_solve(
+    gmres_observation: dict[str, object],
+) -> None:
+    """A converged continuation guess may require no additional Krylov work."""
+    observation = deepcopy(gmres_observation)
+    solve = observation["solve"]
+    replaced = solve["krylov_iterations_by_outer"][-1]
+    solve["krylov_iterations_by_outer"][-1] = 0
+    solve["total_krylov_iterations"] -= replaced
+
+    assert _document([observation])["outcomes"] == [observation]
+
+
 def test_profile_is_separate_complete_and_deterministically_sorted(
     profile_observation: dict[str, object],
 ) -> None:
@@ -191,7 +231,11 @@ def test_checked_document_round_trip_is_deterministic(
     results.write_document(second, document)
     assert first.read_bytes() == second.read_bytes()
     assert results.read_document(first) == document
-    assert json.loads(first.read_text(encoding="utf-8"))["cases"] == records()
+    serialized = json.loads(first.read_text(encoding="utf-8"))
+    assert serialized["cases"] == records()
+    assert all("eigenvalue_iteration" not in case for case in serialized["cases"])
+    assert "inner_linear_solve" not in serialized["solve_controls"]
+    assert "eigenvalue_iteration" not in serialized["solve_controls"]
     workload_record = document["workloads"][0]
     assert (
         workload_record["material_family_digest"]
@@ -232,6 +276,28 @@ def test_summary_derivation_uses_repeated_measurements(
         "range": 2.0,
     }
     assert set(summary[0]["stages_seconds"]) == set(measurement.STAGE_NAMES)
+    assert summary[0]["eigenvalue_iteration"] == {"kind": "power"}
+
+
+def test_summary_keeps_iteration_policies_separate(
+    direct_observation: dict[str, object],
+) -> None:
+    """Ordinary and shifted measurements cannot form one timing population."""
+    measurements = []
+    for iteration in (
+        iteration_record("power"),
+        iteration_record("wielandt", 0.95),
+    ):
+        for index in range(3):
+            record = deepcopy(direct_observation)
+            record["outcome_id"] = f"summary-only-{iteration['kind']}-{index}"
+            record["eigenvalue_iteration"] = iteration
+            measurements.append(record)
+    summaries = results.summarize_outcomes(measurements)
+    assert [item["eigenvalue_iteration"] for item in summaries] == [
+        {"kind": "power"},
+        {"kind": "wielandt", "shift_inverse_keff": 0.95},
+    ]
 
 
 @pytest.mark.parametrize(
@@ -265,10 +331,9 @@ def test_factor_views_are_inspected_after_peak_rss_is_frozen(monkeypatch) -> Non
 
     monkeypatch.setattr(measurement.resource, "getrusage", recording_getrusage)
     monkeypatch.setattr(measurement, "_factor_record", recording_factor_record)
-    measurement.measure_workload(
+    measurement.measure_direct(
         6,
         2,
-        case_id=DIRECT_CASE_ID,
         requested_threads=1,
         kind="measurement",
         repetition=0,
@@ -295,7 +360,7 @@ def test_study_modes_and_cases_are_exact() -> None:
 
 
 def test_selected_protocol_accepts_reusable_workload_and_warmup_inputs() -> None:
-    """Selected runs reuse one protocol rather than adding assessment modes."""
+    """Selected runs accept checked workload and warm-up dimensions."""
     plan = runner._plan(
         "selected",
         workloads=((18, 6), (36, 12)),
@@ -305,9 +370,9 @@ def test_selected_protocol_accepts_reusable_workload_and_warmup_inputs() -> None
     assert plan.output_name == "selected_direct.json"
     assert plan.requests == (
         runner.WorkerRequest(6, 2, DIRECT_CASE_ID, record=False),
-        runner.WorkerRequest(18, 6, DIRECT_CASE_ID),
+        runner.WorkerRequest(18, 6, DIRECT_CASE_ID, repetition=0),
         runner.WorkerRequest(6, 2, DIRECT_CASE_ID, record=False),
-        runner.WorkerRequest(36, 12, DIRECT_CASE_ID),
+        runner.WorkerRequest(36, 12, DIRECT_CASE_ID, repetition=0),
     )
     assert [item["workload_id"] for item in runner._workloads(plan.requests)] == [
         "g6-z2",
@@ -325,7 +390,7 @@ def test_selected_protocol_accepts_reusable_workload_and_warmup_inputs() -> None
     assert iterative.output_name == "selected_iterative.json"
     assert iterative.requests == (
         runner.WorkerRequest(6, 2, GMRES_JACOBI_CASE_ID, record=False),
-        runner.WorkerRequest(18, 12, GMRES_JACOBI_CASE_ID),
+        runner.WorkerRequest(18, 12, GMRES_JACOBI_CASE_ID, repetition=0),
     )
     with pytest.raises(ValueError, match="at least one workload"):
         runner._plan("selected", output_name="empty.json")
@@ -333,7 +398,7 @@ def test_selected_protocol_accepts_reusable_workload_and_warmup_inputs() -> None
         runner._plan("selected", workloads=((6, 2),))
     with pytest.raises(ValueError, match="groups must be"):
         runner._plan("selected", workloads=((7, 2),), output_name="invalid.json")
-    with pytest.raises(ValueError, match="layers must be positive"):
+    with pytest.raises(ValueError, match="axial_layers must be"):
         runner._plan("selected", workloads=((6, 0),), output_name="invalid.json")
     with pytest.raises(ValueError, match="must be unique"):
         runner._plan(
@@ -343,15 +408,88 @@ def test_selected_protocol_accepts_reusable_workload_and_warmup_inputs() -> None
         )
 
 
+def test_selected_protocol_supports_repetition_and_profile() -> None:
+    """One selected protocol supports repeated and profiled GMRES assessment."""
+    plan = runner._plan(
+        "selected",
+        GMRES_JACOBI_CASE_ID,
+        workloads=((18, 12),),
+        warmup=(6, 2),
+        repetitions=3,
+        profile=True,
+        output_name="repeated.json",
+    )
+    assert plan.requests == (
+        runner.WorkerRequest(6, 2, GMRES_JACOBI_CASE_ID, record=False),
+        runner.WorkerRequest(18, 12, GMRES_JACOBI_CASE_ID, repetition=0),
+        runner.WorkerRequest(18, 12, GMRES_JACOBI_CASE_ID, repetition=1),
+        runner.WorkerRequest(18, 12, GMRES_JACOBI_CASE_ID, repetition=2),
+        runner.WorkerRequest(18, 12, GMRES_JACOBI_CASE_ID, kind="profile"),
+    )
+    with pytest.raises(ValueError, match="positive"):
+        runner._plan(
+            "selected", workloads=((18, 12),), repetitions=0, output_name="bad.json"
+        )
+
+
+def test_selected_protocol_accepts_an_explicit_wielandt_policy() -> None:
+    """Any checked workload can carry an explicit fixed shift."""
+    plan = runner._plan(
+        "selected",
+        GMRES_JACOBI_CASE_ID,
+        workloads=((18, 6),),
+        warmup=(6, 2),
+        output_name="shifted.json",
+        iteration_id=WIELANDT_ITERATION_ID,
+        shift_inverse_keff=0.95,
+    )
+    assert plan.requests[0] == runner.WorkerRequest(
+        6, 2, GMRES_JACOBI_CASE_ID, record=False
+    )
+    measured = plan.requests[1]
+    assert measured.iteration_id == WIELANDT_ITERATION_ID
+    assert measured.shift_inverse_keff == pytest.approx(0.95)
+    assert runner._request_id(measured).startswith(
+        "g18-z6-gmres_jacobi-wielandt-s0.95-"
+    )
+    settings, iteration = resolve_case(
+        GMRES_JACOBI_CASE_ID, WIELANDT_ITERATION_ID, 0.95
+    )
+    assert iteration == iteration_record(WIELANDT_ITERATION_ID, 0.95)
+    assert settings.eigenvalue_iteration.shift_inverse_keff == pytest.approx(0.95)
+    with pytest.raises(ValueError, match="requires an explicit fixed shift"):
+        runner._plan(
+            "selected",
+            workloads=((18, 6),),
+            output_name="missing-shift.json",
+            iteration_id=WIELANDT_ITERATION_ID,
+        )
+
+
+def test_result_reader_requires_an_exact_operator_policy(
+    direct_observation: dict[str, object],
+) -> None:
+    """An outcome cannot add fields to its complete operator policy."""
+    invalid = deepcopy(direct_observation)
+    invalid["eigenvalue_iteration"] = {
+        **iteration_record("power"),
+        "shift_inverse_keff": 1.0,
+    }
+    with pytest.raises(ValueError, match="invalid"):
+        _document([invalid])
+
+
 def test_baseline_resume_runs_only_missing_endpoint_after_cheap_warmup() -> None:
     """A partial baseline resumes its endpoint after the uniform cheap warm-up."""
-    baseline = runner._plan("baseline").requests
+    plan = runner._plan("baseline")
+    baseline = plan.requests
     completed = [
         {"outcome_id": runner._request_id(request), "status": "success"}
         for request in baseline
         if request.record and (request.groups, request.axial_layers) != (72, 24)
     ]
-    resumed = runner._pending_requests(baseline, completed)
+    pending = runner._pending_groups(plan.groups, completed)
+    resumed = (pending[0].warmup,) + pending[0].measurements
     assert resumed[0] == runner.WorkerRequest(6, 2, DIRECT_CASE_ID, record=False)
     assert [(request.kind, request.repetition) for request in resumed[1:]] == [
         ("measurement", 0),
@@ -379,3 +517,102 @@ def test_smoke_runner_discards_warmup_and_checkpoints_results(
         "measurement",
         "profile",
     ]
+
+
+@pytest.mark.parametrize("warmup", [None, (6, 2)])
+def test_terminal_failures_stop_dependent_workers(tmp_path, monkeypatch, warmup):
+    """Fresh and resumed runs share the same terminal-failure dependencies."""
+    calls = []
+
+    def fail(*args, **_kwargs):
+        calls.append(args)
+        raise orchestration.PerformanceWorkerError("timeout", "worker deadline")
+
+    monkeypatch.setattr(orchestration, "_launch_worker", fail)
+    options = {
+        "workloads": ((6, 6), (6, 12)),
+        "warmup": warmup,
+        "repetitions": 3,
+        "profile": True,
+        "output_name": "failures.json",
+    }
+    path = runner.run("selected", tmp_path, **options)
+    document = results.read_document(path)
+    expected_calls = [(6, 6), (6, 12)] if warmup is None else [(6, 2)]
+    assert calls == expected_calls
+    assert len(document["outcomes"]) == len(expected_calls)
+    assert all(outcome["status"] == "failed" for outcome in document["outcomes"])
+    runner.run("selected", tmp_path, resume=True, **options)
+    assert calls == expected_calls
+    assert results.read_document(path) == document
+
+
+def test_profile_only_resume_keeps_its_warmup():
+    """Profiling follows the same warm-up protocol after an interrupted run."""
+    plan = runner._plan(
+        "selected",
+        workloads=((6, 6),),
+        warmup=(6, 2),
+        profile=True,
+        output_name="profile.json",
+    )
+    measured = plan.groups[0].measurements[0]
+    pending = runner._pending_groups(
+        plan.groups,
+        [
+            {"outcome_id": runner._request_id(measured), "status": "success"},
+        ],
+    )
+    assert len(pending) == 1
+    assert pending[0].warmup == plan.groups[0].warmup
+    assert [request.kind for request in pending[0].measurements] == ["profile"]
+
+
+@pytest.mark.parametrize("dimensions", [(6, 1), (6, 3), (6, True), (6, 2.0)])
+@pytest.mark.parametrize("as_warmup", [False, True])
+def test_unsupported_dimensions_fail_during_planning(dimensions, as_warmup):
+    """Workloads and warm-ups obey the frozen workload's dimension checks."""
+    with pytest.raises((TypeError, ValueError), match="axial_layers"):
+        runner._plan(
+            "selected",
+            workloads=((6, 2),) if as_warmup else (dimensions,),
+            warmup=dimensions if as_warmup else None,
+            output_name="invalid.json",
+        )
+
+
+def test_selected_repetitions_print_summaries(
+    tmp_path,
+    monkeypatch,
+    direct_observation,
+    capsys,
+):
+    """Repeated selected measurements expose their computed medians."""
+
+    def measured(groups, axial_layers, **options):
+        outcome = deepcopy(direct_observation)
+        outcome.update(
+            orchestration.outcome_fields(
+                groups,
+                axial_layers,
+                options["case_id"],
+                iteration=iteration_record(options["iteration_id"]),
+                requested_threads=options["requested_threads"],
+                kind=options["kind"],
+                repetition=options["repetition"],
+            )
+        )
+        return outcome
+
+    monkeypatch.setattr(runner, "launch_outcome", measured)
+    path = runner.run(
+        "selected",
+        tmp_path,
+        workloads=((6, 2),),
+        repetitions=3,
+        output_name="repeated.json",
+    )
+    assert len(results.read_document(path)["outcomes"]) == 3
+    output = capsys.readouterr().out
+    assert "Measurement medians:" in output
+    assert "g6-z2, direct" in output

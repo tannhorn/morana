@@ -831,8 +831,10 @@ successive physical flux shapes, weighting each cell by its volume.
 The fixed-source system uses $B=A-F$ and right-hand side $\mathbf b$. An
 ordinary criticality inner iteration uses $B=A$ and right-hand side
 $F\boldsymbol\phi^{(n)}$; a fixed-Wielandt iteration changes $B$ as defined
-below. Morana offers either a sparse direct reference solve or restarted GMRES
-from the zero initial guess. Both policies solve the same algebraic problem
+below. Morana offers either a sparse direct reference solve or restarted GMRES.
+Fixed-source GMRES and the first criticality inner solve use the zero initial
+guess; later GMRES criticality inner solves use the preceding cleaned,
+pre-normalization inner solution. Both policies solve the same algebraic problem
 with the same physical-flux acceptance criteria.
 
 For GMRES with a preconditioner $P$, the iterated system is the

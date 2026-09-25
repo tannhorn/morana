@@ -217,13 +217,14 @@ result = solve_fixed_source(solve_input)
 Their `linear_solve` and `inner_linear_solve` fields respectively own a typed
 `DirectLinearSolveSettings` or `GmresLinearSolveSettings` policy. Direct sparse
 solving is the default; `GmresLinearSolveSettings` selects restarted SciPy
-GMRES from a zero initial guess with one typed
-`NoPreconditioner`, `JacobiPreconditioner`, or `IluPreconditioner`. Jacobi
-uses the assembled diagonal, while threshold-ILU uses its configured drop
-tolerance and fill-factor limit. Fixed-source GMRES constructs its
-preconditioner for that one solve. Criticality constructs a direct
-factorization or GMRES preconditioner once per `solve_keff()` call and reuses
-that setup for the call's inner right-hand sides.
+GMRES with one typed `NoPreconditioner`, `JacobiPreconditioner`, or
+`IluPreconditioner`. Jacobi uses the assembled diagonal, while threshold-ILU
+uses its configured drop tolerance and fill-factor limit. Fixed-source GMRES
+starts from zero and constructs its preconditioner for that one solve.
+Criticality constructs a direct factorization or GMRES preconditioner once per
+`solve_keff()` call and reuses that setup for the call's inner right-hand
+sides. GMRES criticality starts its first inner solve from zero and each later
+one from the preceding cleaned, pre-normalization inner solution.
 The [theory and numerical conventions](theory_references.md#linear-algebra-execution)
 define the direct/GMRES residual, left preconditioning, ordinary power
 iteration, and fixed-Wielandt transformation. All numerical controls are

@@ -22,9 +22,9 @@ python -m studies.finite_volume_performance baseline
 python -m studies.finite_volume_performance baseline --solver gmres_jacobi
 ```
 
-Every baseline cell starts in a fresh worker after the same unrecorded `(6
-groups, 2 layers)` warm-up. This keeps numerical-library initialization out of
-the recorded runs.
+Every baseline workload uses the same unrecorded `(6 groups, 2 layers)`
+warm-up before its recorded workers. Each worker starts in a fresh process;
+numerical-library imports precede its measured solve interval.
 
 ## Selected workloads
 
@@ -42,14 +42,52 @@ python -m studies.finite_volume_performance selected \
 Each recorded workload is preceded by the requested unrecorded warm-up. The
 resource guards apply independently to every worker; a timeout or memory-limit
 failure is retained as study evidence. Repeat `--workload` to record several
-selections with the same solver and guards. Selected runs record one observation
-per workload; use `baseline` for the maintained repeated and profiled matrix.
+selections with the same solver and guards. By default selected runs record one
+observation per workload. Use `--repetitions` and `--profile` for a bounded
+repeated and profiled assessment. Runs with at least three successful
+measurements print timing and memory medians. Supported layer counts are
+2, 6, 12, and 24; both selected workloads and warm-ups use the frozen workload
+dimensions.
+
+The ordinary operator is the default. To record a fixed-Wielandt case, select
+`--iteration wielandt` and provide its explicit nonnegative
+`--shift-inverse-keff`. The same policy applies to every workload in that run,
+and the runner writes the complete policy into every outcome. It never derives
+or adapts a shift while measuring. For example:
+
+```bash
+python -m studies.finite_volume_performance selected \
+  --solver gmres_jacobi --iteration wielandt --shift-inverse-keff 1.02 \
+  --workload 36 6 --workload 18 12 --warmup 6 2 \
+  --repetitions 3 --timeout-seconds 300 --address-space-limit-gib 16 \
+  --output-name shifted_gmres_jacobi.json
+```
+
+Supplying a shift with ordinary power iteration, or selecting Wielandt
+iteration without a shift, is rejected before any worker starts.
+
+The optional warm-up is deliberately ordinary power iteration: it is
+unrecorded and uses a separate fresh worker, so it cannot provide solver state
+or alter the selected shifted measurement.
+
+A failed measurement or profile is retained and stops the remaining workers for
+that workload. A failed warm-up is retained once and blocks all workloads that
+require the same warm-up. Other independent workloads continue. `--resume`
+retains these terminal decisions and executes only missing work, including the
+warm-up when only a profile remains. To retry a terminal failure, start a new
+run with a separate output name.
 
 ## Generated artifacts and workload scope
 
 The workflow writes checked, machine-specific results below
 `artifacts/studies/finite_volume_performance/`. These ignored records are local
 development evidence rather than package data.
+
+Each result document records shared convergence and acceptance controls once,
+linear-solve cases independently, and the complete eigenvalue-iteration policy
+on every outcome. Outcome identifiers and repeated-run summaries include that
+iteration policy, so measurements from different operators or fixed shifts
+cannot be conflated.
 
 The heterogeneous role materials are deterministic synthetic formulas over an
 abstract fast-to-thermal group coordinate. They are workload contrasts spanning

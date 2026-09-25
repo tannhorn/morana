@@ -2,7 +2,6 @@
 
 # Exact checked field sets intentionally mirror the corresponding result
 # records rather than weakening validation through a shared generic schema.
-# pylint: disable=duplicate-code
 
 from __future__ import annotations
 
@@ -15,6 +14,12 @@ import re
 from statistics import median
 from typing import Any
 
+from studies.finite_volume_performance.cases import (
+    iteration_identifier,
+    iteration_record,
+    records,
+    solve_controls_record,
+)
 from studies.finite_volume_performance.orchestration import (
     THREAD_ENVIRONMENT_VARIABLES,
     outcome_identifier,
@@ -38,7 +43,7 @@ RSS_CHECKPOINT_NAMES = (
     "completed_result",
 )
 
-_DOCUMENT_FIELDS = {"workloads", "cases", "outcomes"}
+_DOCUMENT_FIELDS = {"solve_controls", "workloads", "cases", "outcomes"}
 _WORKLOAD_FIELDS = {
     "workload_id",
     "groups",
@@ -53,6 +58,7 @@ _DIGEST_FIELDS = {"diffusion", "absorption", "scattering", "fission_transfer"}
 _OUTCOME_FIELDS = {
     "outcome_id",
     "case_id",
+    "eigenvalue_iteration",
     "workload_id",
     "kind",
     "repetition",
@@ -333,14 +339,16 @@ def _check_configuration(value: object) -> dict[str, Any]:
     return configuration
 
 
-def _check_solve(
+def _check_common_solve(
     value: object,
     *,
+    fields: set[str],
+    checkpoint_fields: set[str],
     configuration: Mapping[str, Any],
     expected_size: int,
-) -> None:
-    """Validate solve measurements, sparse arrays, and numerical checks."""
-    solve = _record(value, _SOLVE_FIELDS, "observation.solve")
+) -> tuple[dict[str, Any], float]:
+    """Validate measurements shared by every successful solver case."""
+    solve = _record(value, fields, "solve")
     wall_time = _number(
         solve["wall_time_seconds"], "solve.wall_time_seconds", positive=True
     )
@@ -349,7 +357,7 @@ def _check_solve(
     peak_rss = _integer(solve["peak_rss_bytes"], "solve.peak_rss_bytes")
     checkpoints = _record(
         solve["rss_checkpoints_bytes"],
-        _RSS_CHECKPOINT_FIELDS,
+        checkpoint_fields,
         "solve.rss_checkpoints_bytes",
     )
     for name, checkpoint in checkpoints.items():
@@ -361,20 +369,9 @@ def _check_solve(
     ):
         raise ValueError("solve.peak_rss_bytes is smaller than an RSS observation")
 
-    stages = _record(solve["stages_seconds"], _STAGE_FIELDS, "solve.stages_seconds")
-    for name, seconds in stages.items():
-        _number(seconds, f"solve.stages_seconds.{name}")
-    if sum(stages.values()) > wall_time + 1.0e-9:
-        raise ValueError("exclusive stage times exceed solve wall time")
-
     matrices = _record(solve["matrices"], {"loss", "fission"}, "solve.matrices")
     for name, matrix in matrices.items():
         _check_sparse(matrix, f"solve.matrices.{name}", expected_size)
-    factorization = _record(
-        solve["factorization"], {"lower", "upper"}, "solve.factorization"
-    )
-    for name, matrix in factorization.items():
-        _check_sparse(matrix, f"solve.factorization.{name}", expected_size)
     _integer(solve["outer_iterations"], "solve.outer_iterations", positive=True)
 
     checks = _record(
@@ -396,9 +393,36 @@ def _check_solve(
         raise ValueError(
             "solve.numerical_checks.scalar_balance_residual must be finite"
         )
+    return solve, wall_time
 
 
-# pylint: disable-next=too-many-branches
+def _check_solve(
+    value: object,
+    *,
+    configuration: Mapping[str, Any],
+    expected_size: int,
+) -> None:
+    """Validate solve measurements, sparse arrays, and numerical checks."""
+    solve, wall_time = _check_common_solve(
+        value,
+        fields=_SOLVE_FIELDS,
+        checkpoint_fields=_RSS_CHECKPOINT_FIELDS,
+        configuration=configuration,
+        expected_size=expected_size,
+    )
+    stages = _record(solve["stages_seconds"], _STAGE_FIELDS, "solve.stages_seconds")
+    for name, seconds in stages.items():
+        _number(seconds, f"solve.stages_seconds.{name}")
+    if sum(stages.values()) > wall_time + 1.0e-9:
+        raise ValueError("exclusive stage times exceed solve wall time")
+
+    factorization = _record(
+        solve["factorization"], {"lower", "upper"}, "solve.factorization"
+    )
+    for name, matrix in factorization.items():
+        _check_sparse(matrix, f"solve.factorization.{name}", expected_size)
+
+
 def _check_gmres_solve(
     value: object,
     *,
@@ -406,29 +430,18 @@ def _check_gmres_solve(
     expected_size: int,
 ) -> None:
     """Validate GMRES/Jacobi solve measurements and diagnostics."""
-    solve = _record(value, _GMRES_SOLVE_FIELDS | _GMRES_KRYLOV_FIELDS, "solve")
-    wall = _number(solve["wall_time_seconds"], "solve.wall_time_seconds", positive=True)
-    for field in ("user_cpu_time_seconds", "system_cpu_time_seconds"):
-        _number(solve[field], f"solve.{field}")
-    peak = _integer(solve["peak_rss_bytes"], "solve.peak_rss_bytes")
-    checkpoints = _record(
-        solve["rss_checkpoints_bytes"],
-        {
+    solve, wall = _check_common_solve(
+        value,
+        fields=_GMRES_SOLVE_FIELDS | _GMRES_KRYLOV_FIELDS,
+        checkpoint_fields={
             "loss_assembly",
             "fission_matrix_assembly",
             "linear_solve_setup",
             "completed_result",
         },
-        "solve.rss_checkpoints_bytes",
+        configuration=configuration,
+        expected_size=expected_size,
     )
-    for name, value_ in checkpoints.items():
-        _integer(value_, f"solve.rss_checkpoints_bytes.{name}")
-    if peak < max(
-        *checkpoints.values(),
-        configuration["import_baseline_rss_bytes"],
-        configuration["completed_rss_bytes"],
-    ):
-        raise ValueError("solve peak RSS is smaller than an RSS observation")
     timings = _record(
         solve["timings_seconds"], _GMRES_TIMING_FIELDS, "solve.timings_seconds"
     )
@@ -439,14 +452,9 @@ def _check_gmres_solve(
         _number(value_, f"solve timing {name}")
     if sum(timings.values()) > wall + 1.0e-9:
         raise ValueError("GMRES component timings exceed wall time")
-    matrices = _record(solve["matrices"], {"loss", "fission"}, "solve.matrices")
-    for name, matrix in matrices.items():
-        _check_sparse(matrix, f"solve.matrices.{name}", expected_size)
     if solve["factorization"] is not None:
         raise ValueError("GMRES/Jacobi must not retain factorization statistics")
-    iterations = _integer(
-        solve["outer_iterations"], "solve.outer_iterations", positive=True
-    )
+    iterations = solve["outer_iterations"]
     krylov = solve["krylov_iterations_by_outer"]
     residuals = solve["linear_relative_residuals_by_outer"]
     if not isinstance(krylov, list) or len(krylov) != iterations:
@@ -454,7 +462,7 @@ def _check_gmres_solve(
     if not isinstance(residuals, list) or len(residuals) != iterations:
         raise ValueError("per-outer residuals do not match outer iterations")
     for value_ in krylov:
-        _integer(value_, "Krylov iteration count", positive=True)
+        _integer(value_, "Krylov iteration count")
     for value_ in residuals:
         _number(value_, "linear relative residual")
     total = _integer(
@@ -462,20 +470,9 @@ def _check_gmres_solve(
     )
     if total != sum(krylov):
         raise ValueError("total Krylov iterations do not match per-outer counts")
-    checks = _record(solve["numerical_checks"], _NUMERICAL_FIELDS, "checks")
-    for name, value_ in checks.items():
-        if name == "scalar_balance_residual":
-            if (
-                isinstance(value_, bool)
-                or not isinstance(value_, (int, float))
-                or not math.isfinite(value_)
-            ):
-                raise ValueError("scalar balance residual must be finite")
-        else:
-            _number(value_, f"solve.numerical_checks.{name}", positive=name == "keff")
 
 
-# pylint: disable-next=too-many-branches
+# pylint: disable-next=too-many-branches,too-many-statements
 def _check_outcome(
     value: object,
     workloads: Mapping[str, Mapping[str, Any]],
@@ -491,6 +488,18 @@ def _check_outcome(
     if workload_id not in workloads or case_id not in cases:
         raise ValueError("outcome has an unknown workload or solver case")
     kind = outcome["kind"]
+    workload = workloads[workload_id]
+    iteration = outcome["eigenvalue_iteration"]
+    if not isinstance(iteration, dict) or "kind" not in iteration:
+        raise ValueError("outcome.eigenvalue_iteration must be a policy record")
+    try:
+        checked_iteration = iteration_record(
+            str(iteration["kind"]), iteration.get("shift_inverse_keff")
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("outcome.eigenvalue_iteration is invalid") from exc
+    if iteration != checked_iteration:
+        raise ValueError("outcome.eigenvalue_iteration is not an exact policy record")
     if kind not in {"measurement", "profile"}:
         raise ValueError("outcome.kind must be 'measurement' or 'profile'")
     repetition = outcome["repetition"]
@@ -501,11 +510,11 @@ def _check_outcome(
     threads = _integer(
         outcome["requested_threads"], "outcome.requested_threads", positive=True
     )
-    workload = workloads[workload_id]
     expected_id = outcome_identifier(
         int(workload["groups"]),
         int(workload["axial_layers"]),
         case_id,
+        checked_iteration,
         requested_threads=threads,
         kind=kind,
         repetition=repetition,
@@ -580,9 +589,8 @@ def check_document(document: object) -> dict[str, Any]:
         raise ValueError("performance result cases must be an array")
     if not isinstance(checked["outcomes"], list):
         raise ValueError("performance result outcomes must be an array")
-    # pylint: disable-next=import-outside-toplevel
-    from studies.finite_volume_performance.cases import records
-
+    if checked["solve_controls"] != solve_controls_record():
+        raise ValueError("performance result solve controls differ from frozen values")
     if checked["cases"] != records():
         raise ValueError("performance result cases differ from frozen definitions")
     workloads: dict[str, dict[str, Any]] = {}
@@ -665,43 +673,50 @@ def summarize_outcomes(
     outcomes: Iterable[Mapping[str, object]],
 ) -> list[dict[str, object]]:
     """Derive timing summaries from repeated successful measurements."""
-    grouped: dict[tuple[str, str, int], list[Mapping[str, object]]] = {}
+    grouped: dict[tuple[str, str, str, int], list[Mapping[str, object]]] = {}
     for outcome in outcomes:
         if outcome["kind"] != "measurement" or outcome["status"] != "success":
             continue
         key = (
             str(outcome["case_id"]),
             str(outcome["workload_id"]),
+            iteration_identifier(outcome["eigenvalue_iteration"]),
             int(outcome["requested_threads"]),
         )
         grouped.setdefault(key, []).append(outcome)
 
     summaries = []
-    for (case_id, workload_id, requested_threads), records in sorted(grouped.items()):
-        if len(records) < 3:
+    for (
+        case_id,
+        workload_id,
+        _iteration_id,
+        requested_threads,
+    ), group_records in sorted(grouped.items()):
+        if len(group_records) < 3:
             continue
-        metrics = [outcome_metrics(record) for record in records]
+        metrics = [outcome_metrics(record) for record in group_records]
         statistics = {
             name: _summary_statistics(record[name] for record in metrics)
             for name in metrics[0]
         }
         timing_field = (
             "stages_seconds"
-            if "stages_seconds" in records[0]["solve"]
+            if "stages_seconds" in group_records[0]["solve"]
             else "timings_seconds"
         )
         stage_statistics = {
             stage: _summary_statistics(
-                float(record["solve"][timing_field][stage]) for record in records
+                float(record["solve"][timing_field][stage]) for record in group_records
             )
-            for stage in records[0]["solve"][timing_field]
+            for stage in group_records[0]["solve"][timing_field]
         }
         summaries.append(
             {
                 "case_id": case_id,
                 "workload_id": workload_id,
+                "eigenvalue_iteration": dict(group_records[0]["eigenvalue_iteration"]),
                 "requested_threads": requested_threads,
-                "observation_count": len(records),
+                "observation_count": len(group_records),
                 **statistics,
                 "stages_seconds": stage_statistics,
             }
@@ -727,16 +742,9 @@ def build_document(
 ) -> dict[str, Any]:
     """Construct and check one result document."""
     document = {
+        "solve_controls": solve_controls_record(),
         "workloads": [dict(record) for record in workloads],
-        "cases": _case_records(),
+        "cases": records(),
         "outcomes": [dict(record) for record in outcomes],
     }
     return check_document(document)
-
-
-def _case_records() -> list[dict[str, object]]:
-    """Import and return frozen cases without loading them on the help path."""
-    # pylint: disable-next=import-outside-toplevel
-    from studies.finite_volume_performance.cases import records
-
-    return records()

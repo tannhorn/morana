@@ -13,6 +13,11 @@ import sys
 import tempfile
 from typing import Any
 
+from studies.finite_volume_performance.cases import (
+    iteration_identifier,
+    iteration_record,
+)
+
 THREAD_ENVIRONMENT_VARIABLES = (
     "OPENBLAS_NUM_THREADS",
     "OMP_NUM_THREADS",
@@ -140,14 +145,12 @@ def _launch_worker(
     timeout_seconds: int | float = DEFAULT_TIMEOUT_SECONDS,
     address_space_limit_bytes: int = DEFAULT_ADDRESS_SPACE_LIMIT_BYTES,
     solver_case: str,
+    iteration_id: str,
+    shift_inverse_keff: float | None,
 ) -> dict[str, Any]:
     """Run one resource-bounded outcome in a new Python interpreter."""
     if kind not in {"measurement", "profile"}:
         raise ValueError("kind must be 'measurement' or 'profile'")
-    checked_timeout = _positive_number(timeout_seconds, "timeout_seconds")
-    checked_memory = _positive_integer(
-        address_space_limit_bytes, "address_space_limit_bytes"
-    )
     command = [
         sys.executable,
         "-m",
@@ -161,13 +164,18 @@ def _launch_worker(
         "--kind",
         kind,
         "--address-space-limit-bytes",
-        str(checked_memory),
+        str(address_space_limit_bytes),
         "--output-file-limit-bytes",
         str(MAX_CAPTURED_OUTPUT_BYTES),
+        "--solver-case",
+        solver_case,
+        "--iteration",
+        iteration_id,
     ]
     if repetition is not None:
         command.extend(("--repetition", str(repetition)))
-    command.extend(("--solver-case", solver_case))
+    if shift_inverse_keff is not None:
+        command.extend(("--shift-inverse-keff", str(shift_inverse_keff)))
     with (
         tempfile.TemporaryFile(mode="w+b") as stdout_file,
         tempfile.TemporaryFile(mode="w+b") as stderr_file,
@@ -181,11 +189,11 @@ def _launch_worker(
             start_new_session=True,
         )
         try:
-            returncode = process.wait(timeout=checked_timeout)
+            returncode = process.wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired as exc:
             _terminate_process_group(process)
             raise PerformanceWorkerError(
-                "timeout", f"performance worker exceeded {checked_timeout:g} seconds"
+                "timeout", f"performance worker exceeded {timeout_seconds:g} seconds"
             ) from exc
         except BaseException:
             _terminate_process_group(process)
@@ -209,8 +217,8 @@ def _launch_worker(
             "invalid_output", "performance worker did not return a JSON object"
         )
     outcome["resource_limits"] = {
-        "timeout_seconds": checked_timeout,
-        "address_space_bytes": checked_memory,
+        "timeout_seconds": timeout_seconds,
+        "address_space_bytes": address_space_limit_bytes,
         "captured_output_bytes_per_stream": MAX_CAPTURED_OUTPUT_BYTES,
     }
     return outcome
@@ -220,51 +228,48 @@ def outcome_identifier(
     groups: int,
     axial_layers: int,
     case_id: str,
+    iteration: dict[str, object],
     *,
     requested_threads: int,
     kind: str,
     repetition: int | None,
 ) -> str:
     """Return one deterministic performance-outcome identifier."""
+    policy_id = iteration_identifier(iteration)
     suffix = "none" if repetition is None else str(repetition)
-    return f"g{groups}-z{axial_layers}-{case_id}-t{requested_threads}-{kind}-r{suffix}"
+    return (
+        f"g{groups}-z{axial_layers}-{case_id}-{policy_id}-t{requested_threads}-"
+        f"{kind}-r{suffix}"
+    )
 
 
-def failed_outcome(
+def outcome_fields(
     groups: int,
     axial_layers: int,
     case_id: str,
     *,
+    iteration: dict[str, object],
     requested_threads: int,
-    measurement_kind: str,
+    kind: str,
     repetition: int | None,
-    failure_kind: str,
-    message: str,
 ) -> dict[str, object]:
-    """Return one structured terminal solver-worker failure."""
+    """Return the shared identity fields for one terminal outcome."""
     return {
         "outcome_id": outcome_identifier(
             groups,
             axial_layers,
             case_id,
+            iteration,
             requested_threads=requested_threads,
-            kind=measurement_kind,
+            kind=kind,
             repetition=repetition,
         ),
         "case_id": case_id,
+        "eigenvalue_iteration": iteration,
         "workload_id": f"g{groups}-z{axial_layers}",
-        "kind": measurement_kind,
+        "kind": kind,
         "repetition": repetition,
         "requested_threads": requested_threads,
-        "started_at_utc": datetime.now(timezone.utc).isoformat(),
-        "status": "failed",
-        "repository": None,
-        "environment": None,
-        "resource_limits": None,
-        "configuration": None,
-        "solve": None,
-        "profile": None,
-        "failure": {"kind": failure_kind, "message": message[-4096:]},
     }
 
 
@@ -273,6 +278,8 @@ def launch_outcome(
     axial_layers: int,
     *,
     case_id: str,
+    iteration_id: str = "power",
+    shift_inverse_keff: float | None = None,
     requested_threads: int,
     kind: str,
     repetition: int | None,
@@ -280,6 +287,11 @@ def launch_outcome(
     address_space_limit_bytes: int = DEFAULT_ADDRESS_SPACE_LIMIT_BYTES,
 ) -> dict[str, Any]:
     """Run one case and convert bounded worker failures into outcome records."""
+    iteration = iteration_record(iteration_id, shift_inverse_keff)
+    checked_timeout = _positive_number(timeout_seconds, "timeout_seconds")
+    checked_memory = _positive_integer(
+        address_space_limit_bytes, "address_space_limit_bytes"
+    )
     started_at = datetime.now(timezone.utc).isoformat()
     try:
         return _launch_worker(
@@ -288,27 +300,34 @@ def launch_outcome(
             requested_threads=requested_threads,
             kind=kind,
             repetition=repetition,
-            timeout_seconds=timeout_seconds,
-            address_space_limit_bytes=address_space_limit_bytes,
+            timeout_seconds=checked_timeout,
+            address_space_limit_bytes=checked_memory,
             solver_case=case_id,
+            iteration_id=iteration_id,
+            shift_inverse_keff=shift_inverse_keff,
         )
     except PerformanceWorkerError as exc:
-        outcome = failed_outcome(
-            groups,
-            axial_layers,
-            case_id,
-            requested_threads=requested_threads,
-            measurement_kind=kind,
-            repetition=repetition,
-            failure_kind=exc.kind,
-            message=str(exc),
-        )
-        outcome["started_at_utc"] = started_at
-        outcome["resource_limits"] = {
-            "timeout_seconds": _positive_number(timeout_seconds, "timeout_seconds"),
-            "address_space_bytes": _positive_integer(
-                address_space_limit_bytes, "address_space_limit_bytes"
+        return {
+            **outcome_fields(
+                groups,
+                axial_layers,
+                case_id,
+                iteration=iteration,
+                requested_threads=requested_threads,
+                kind=kind,
+                repetition=repetition,
             ),
-            "captured_output_bytes_per_stream": MAX_CAPTURED_OUTPUT_BYTES,
+            "started_at_utc": started_at,
+            "status": "failed",
+            "repository": None,
+            "environment": None,
+            "resource_limits": {
+                "timeout_seconds": checked_timeout,
+                "address_space_bytes": checked_memory,
+                "captured_output_bytes_per_stream": MAX_CAPTURED_OUTPUT_BYTES,
+            },
+            "configuration": None,
+            "solve": None,
+            "profile": None,
+            "failure": {"kind": exc.kind, "message": str(exc)[-4096:]},
         }
-        return outcome

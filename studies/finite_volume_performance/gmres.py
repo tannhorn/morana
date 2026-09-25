@@ -1,8 +1,8 @@
-"""Worker-local GMRES/Jacobi measurements for the baseline workflow."""
+"""Worker-local GMRES/Jacobi measurements for the performance study."""
 
 # This study observes private finite-volume stages. It remains separate from
 # Morana's public solver API.
-# pylint: disable=duplicate-code,protected-access
+# pylint: disable=protected-access
 
 from __future__ import annotations
 
@@ -19,9 +19,8 @@ from morana.solvers import finite_volume
 from studies.finite_volume_performance import measurement
 from studies.finite_volume_performance.cases import (
     GMRES_JACOBI_CASE_ID,
-    settings_for,
+    resolve_case,
 )
-from studies.finite_volume_performance.orchestration import outcome_identifier
 
 _TIMING_FIELDS = (
     "loss_assembly",
@@ -87,7 +86,12 @@ class _Capture:
         return wrapper
 
 
-def _instrumented_solve(configuration: Any, capture: _Capture) -> Any:
+def _instrumented_solve(
+    configuration: Any,
+    capture: _Capture,
+    *,
+    settings: Any,
+) -> Any:
     """Run the GMRES/Jacobi solve with measurement wrappers."""
     wrappers = {
         "_assemble_loss_matrix": capture.timed_assembly(
@@ -111,7 +115,7 @@ def _instrumented_solve(configuration: Any, capture: _Capture) -> Any:
         return finite_volume.solve_keff(
             configuration,
             FissionSourceNormalization(rate=1.0),
-            settings_for(GMRES_JACOBI_CASE_ID),
+            settings,
         )
 
 
@@ -122,10 +126,15 @@ def measure_gmres_jacobi(
     requested_threads: int,
     kind: str,
     repetition: int | None,
+    iteration_id: str = "power",
+    shift_inverse_keff: float | None = None,
 ) -> dict[str, object]:
     """Measure one GMRES/Jacobi workload in the current fresh worker."""
     if kind not in {"measurement", "profile"}:
         raise ValueError("kind must be 'measurement' or 'profile'")
+    settings, iteration = resolve_case(
+        GMRES_JACOBI_CASE_ID, iteration_id, shift_inverse_keff
+    )
     capture = _Capture()
     profile = cProfile.Profile() if kind == "profile" else None
 
@@ -133,7 +142,7 @@ def measure_gmres_jacobi(
         try:
             if profile is not None:
                 profile.enable()
-            result = _instrumented_solve(configuration, capture)
+            result = _instrumented_solve(configuration, capture, settings=settings)
         finally:
             if profile is not None:
                 profile.disable()
@@ -147,46 +156,29 @@ def measure_gmres_jacobi(
     reported_krylov = [item.linear_solve.iterations for item in report.outer_iterations]
     if capture.krylov_iterations != reported_krylov:
         raise RuntimeError("captured Krylov counts do not match execution report")
-    return {
-        "outcome_id": outcome_identifier(
-            groups,
-            axial_layers,
-            GMRES_JACOBI_CASE_ID,
-            requested_threads=requested_threads,
-            kind=kind,
-            repetition=repetition,
-        ),
-        "case_id": GMRES_JACOBI_CASE_ID,
-        "workload_id": f"g{groups}-z{axial_layers}",
-        "kind": kind,
-        "repetition": repetition,
-        "requested_threads": requested_threads,
-        "status": "success",
-        **measurement._worker_fields(
-            common,
-            {
-                "rss_checkpoints_bytes": capture.rss,
-                "timings_seconds": capture.wall_seconds,
-                "cpu_times_seconds": capture.cpu_seconds,
-                "matrices": capture.matrices,
-                "factorization": None,
-                "outer_iterations": report.iterations,
-                "krylov_iterations_by_outer": capture.krylov_iterations,
-                "total_krylov_iterations": sum(capture.krylov_iterations),
-                "linear_relative_residuals_by_outer": [
-                    item.linear_solve.true_relative_residual
-                    for item in report.outer_iterations
-                ],
-                "numerical_checks": measurement._numerical_record(result),
-            },
-        ),
-        "profile": (
-            None
-            if profile is None
-            else {
-                "profiler": "cProfile",
-                "entries": measurement._profile_entries(profile),
-            }
-        ),
-        "failure": None,
-    }
+    return measurement._successful_outcome(
+        groups,
+        axial_layers,
+        GMRES_JACOBI_CASE_ID,
+        iteration=iteration,
+        requested_threads=requested_threads,
+        kind=kind,
+        repetition=repetition,
+        common=common,
+        solve_fields={
+            "rss_checkpoints_bytes": capture.rss,
+            "timings_seconds": capture.wall_seconds,
+            "cpu_times_seconds": capture.cpu_seconds,
+            "matrices": capture.matrices,
+            "factorization": None,
+            "outer_iterations": report.iterations,
+            "krylov_iterations_by_outer": capture.krylov_iterations,
+            "total_krylov_iterations": sum(capture.krylov_iterations),
+            "linear_relative_residuals_by_outer": [
+                item.linear_solve.true_relative_residual
+                for item in report.outer_iterations
+            ],
+            "numerical_checks": measurement._numerical_record(result),
+        },
+        profile=profile,
+    )
