@@ -13,11 +13,10 @@ from studies.finite_volume_performance.cases import (
     iteration_record,
 )
 from studies.finite_volume_performance.orchestration import (
-    DEFAULT_ADDRESS_SPACE_LIMIT_BYTES,
-    DEFAULT_TIMEOUT_SECONDS,
     launch_outcome,
     outcome_identifier,
 )
+from studies.finite_volume_performance.protocol import DEFAULT_STUDY_PROTOCOL
 from studies.finite_volume_performance.results import (
     build_document,
     outcome_metrics,
@@ -27,7 +26,13 @@ from studies.finite_volume_performance.results import (
 )
 
 DEFAULT_OUTPUT_DIR = Path("artifacts/studies/finite_volume_performance")
-_BASELINE_WARMUP = (6, 2)
+
+
+class _Unspecified:
+    """Mark a selected-run control that the caller has not resolved."""
+
+
+_UNSPECIFIED = _Unspecified()
 
 
 @dataclass(frozen=True)
@@ -95,6 +100,7 @@ def _execution_groups(
     iteration_id: str,
     shift_inverse_keff: float | None,
     placement: str,
+    requested_threads: int,
 ) -> tuple[ExecutionGroup, ...]:
     """Build the same checked worker protocol for every selected workload."""
     # pylint: disable-next=import-outside-toplevel,protected-access
@@ -122,7 +128,7 @@ def _execution_groups(
             *warmup,
             case_id,
             placement,
-            1,
+            requested_threads,
             "power",
             None,
             "measurement",
@@ -137,7 +143,7 @@ def _execution_groups(
             layers,
             case_id,
             placement,
-            1,
+            requested_threads,
             iteration_id,
             shift_inverse_keff,
             "measurement",
@@ -158,21 +164,21 @@ def _plan(
     solver_case: str | None,
     *,
     workloads: tuple[tuple[int, int], ...],
-    warmup: tuple[int, int] | None,
+    warmup: tuple[int, int] | None | _Unspecified,
     output_name: str | None,
-    repetitions: int,
-    profile: bool,
+    repetitions: int | None,
+    profile: bool | None,
     iteration_id: str,
     shift_inverse_keff: float | None,
     placement: str,
 ) -> RunPlan:
     """Resolve one CLI mode into an explicit immutable execution plan."""
-    selected_options = (
+    explicit_options = (
         workloads,
-        warmup,
+        warmup is not _UNSPECIFIED,
         output_name,
-        repetitions != 1,
-        profile,
+        repetitions is not None,
+        profile is not None,
         iteration_id != "power",
         shift_inverse_keff is not None,
         placement != "structured",
@@ -180,7 +186,7 @@ def _plan(
     if mode == "smoke":
         if solver_case is not None:
             raise ValueError("--solver applies only to baseline or selected mode")
-        if any(selected_options):
+        if any(explicit_options):
             raise ValueError("workload selection applies only to selected mode")
         return RunPlan(
             mode,
@@ -188,16 +194,17 @@ def _plan(
             _execution_groups(
                 ((6, 2),),
                 DIRECT_CASE_ID,
-                (6, 2),
-                repetitions=1,
-                profile=True,
+                DEFAULT_STUDY_PROTOCOL.warmup,
+                repetitions=DEFAULT_STUDY_PROTOCOL.repetitions(DIRECT_CASE_ID),
+                profile=DEFAULT_STUDY_PROTOCOL.profile,
                 iteration_id="power",
                 shift_inverse_keff=None,
                 placement=placement,
+                requested_threads=DEFAULT_STUDY_PROTOCOL.requested_threads,
             ),
         )
     if mode == "baseline":
-        if any(selected_options):
+        if any(explicit_options):
             raise ValueError("workload selection applies only to selected mode")
         case_id = _resolve_case_id(solver_case)
         # pylint: disable-next=import-outside-toplevel
@@ -209,12 +216,13 @@ def _plan(
             _execution_groups(
                 tuple(baseline_workloads()),
                 case_id,
-                _BASELINE_WARMUP,
-                repetitions=3,
-                profile=True,
+                DEFAULT_STUDY_PROTOCOL.warmup,
+                repetitions=DEFAULT_STUDY_PROTOCOL.repetitions(case_id),
+                profile=DEFAULT_STUDY_PROTOCOL.profile,
                 iteration_id="power",
                 shift_inverse_keff=None,
                 placement=placement,
+                requested_threads=DEFAULT_STUDY_PROTOCOL.requested_threads,
             ),
         )
     if mode == "selected":
@@ -224,6 +232,12 @@ def _plan(
             raise ValueError("selected mode requires an output name")
         if Path(output_name).name != output_name or not output_name.endswith(".json"):
             raise ValueError("output name must be a JSON filename")
+        if warmup is _UNSPECIFIED:
+            raise ValueError("selected mode requires --warmup or --no-warmup")
+        if repetitions is None:
+            raise ValueError("selected mode requires --repetitions")
+        if profile is None:
+            raise ValueError("selected mode requires --profile or --no-profile")
         case_id = _resolve_case_id(solver_case)
         return RunPlan(
             mode,
@@ -237,6 +251,7 @@ def _plan(
                 iteration_id=iteration_id,
                 shift_inverse_keff=shift_inverse_keff,
                 placement=placement,
+                requested_threads=DEFAULT_STUDY_PROTOCOL.requested_threads,
             ),
         )
     raise ValueError("mode must be 'smoke', 'baseline', or 'selected'")
@@ -338,15 +353,15 @@ def run(
     mode: str,
     output_dir: Path,
     *,
-    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
-    address_space_limit_bytes: int = DEFAULT_ADDRESS_SPACE_LIMIT_BYTES,
+    timeout_seconds: float = DEFAULT_STUDY_PROTOCOL.timeout_seconds,
+    address_space_limit_bytes: int = DEFAULT_STUDY_PROTOCOL.address_space_limit_bytes,
     resume: bool = False,
     solver_case: str | None = None,
     workloads: tuple[tuple[int, int], ...] = (),
-    warmup: tuple[int, int] | None = None,
+    warmup: tuple[int, int] | None | _Unspecified = _UNSPECIFIED,
     output_name: str | None = None,
-    repetitions: int = 1,
-    profile: bool = False,
+    repetitions: int | None = None,
+    profile: bool | None = None,
     iteration_id: str = "power",
     shift_inverse_keff: float | None = None,
     placement: str = "structured",
@@ -381,14 +396,18 @@ def run(
             build_document(workloads=workload_records, outcomes=[]),
         )
     pending = _pending_groups(plan.groups, outcomes)
+    total_jobs = sum(len(group.requests) for group in pending)
+    job_number = 0
     disposition = "Resuming" if resume else "Running"
     print(f"{disposition} many-group performance mode: {plan.mode}")
     while pending:
         group = pending[0]
         for request in group.requests:
+            job_number += 1
             disposition = "recorded" if request.record else "warm-up"
             print(
-                f"  {request.case_id}, g={request.groups}, "
+                f"  Job [{job_number}/{total_jobs}]: "
+                f"{request.case_id}, g={request.groups}, "
                 f"z={request.axial_layers}, {request.kind}, {disposition}"
                 f", placement={request.placement}"
             )
@@ -462,12 +481,21 @@ def parse_args() -> argparse.Namespace:
         default="structured",
         help="placement family for selected workloads (default: structured)",
     )
-    parser.add_argument(
+    warmup_group = parser.add_mutually_exclusive_group()
+    warmup_group.add_argument(
         "--warmup",
         nargs=2,
         type=int,
+        default=_UNSPECIFIED,
         metavar=("GROUPS", "LAYERS"),
-        help="optional unrecorded workload before each selected workload",
+        help="unrecorded workload before each selected workload",
+    )
+    warmup_group.add_argument(
+        "--no-warmup",
+        dest="warmup",
+        action="store_const",
+        const=None,
+        help="select no warm-up for selected mode",
     )
     parser.add_argument(
         "--output-name",
@@ -476,24 +504,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--repetitions",
         type=int,
-        default=1,
-        help="recorded measurements per selected workload (default: 1)",
+        default=None,
+        help="required recorded measurements per selected workload",
     )
     parser.add_argument(
         "--profile",
-        action="store_true",
-        help="also record one function profile per selected workload",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="required choice to record or omit one profile per selected workload",
     )
     parser.add_argument(
         "--timeout-seconds",
         type=float,
-        default=float(DEFAULT_TIMEOUT_SECONDS),
+        default=DEFAULT_STUDY_PROTOCOL.timeout_seconds,
         help="finite deadline applied independently to every worker",
     )
     parser.add_argument(
         "--address-space-limit-gib",
         type=float,
-        default=DEFAULT_ADDRESS_SPACE_LIMIT_BYTES / 1024**3,
+        default=DEFAULT_STUDY_PROTOCOL.address_space_limit_bytes / 1024**3,
         help="address-space ceiling applied before numerical-library imports",
     )
     parser.add_argument(
@@ -501,7 +530,18 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="append only missing outcomes to the chosen mode's JSON",
     )
-    return parser.parse_args()
+    arguments = parser.parse_args()
+    if arguments.mode == "selected":
+        missing = []
+        if arguments.warmup is _UNSPECIFIED:
+            missing.append("--warmup/--no-warmup")
+        if arguments.repetitions is None:
+            missing.append("--repetitions")
+        if arguments.profile is None:
+            missing.append("--profile/--no-profile")
+        if missing:
+            parser.error("selected mode requires explicit " + ", ".join(missing))
+    return arguments
 
 
 def main() -> None:
@@ -515,7 +555,11 @@ def main() -> None:
         resume=arguments.resume,
         solver_case=arguments.solver_case,
         workloads=tuple(tuple(item) for item in arguments.workload),
-        warmup=None if arguments.warmup is None else tuple(arguments.warmup),
+        warmup=(
+            arguments.warmup
+            if arguments.warmup is None or arguments.warmup is _UNSPECIFIED
+            else tuple(arguments.warmup)
+        ),
         output_name=arguments.output_name,
         repetitions=arguments.repetitions,
         profile=arguments.profile,

@@ -7,6 +7,7 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 from pathlib import Path
+import sys
 import tempfile
 
 import pytest
@@ -18,6 +19,7 @@ from studies.finite_volume_performance import (
     runner,
     workload,
 )
+from studies.finite_volume_performance.protocol import DEFAULT_STUDY_PROTOCOL
 from studies.finite_volume_performance.cases import (
     BICGSTAB_JACOBI_CASE_ID,
     DIRECT_CASE_ID,
@@ -33,14 +35,16 @@ def _plan(mode: str, solver_case: str | None = None, **overrides) -> runner.RunP
     """Resolve a test plan while keeping production planning inputs explicit."""
     options = {
         "workloads": (),
-        "warmup": None,
+        "warmup": runner._UNSPECIFIED,
         "output_name": None,
-        "repetitions": 1,
-        "profile": False,
+        "repetitions": None,
+        "profile": None,
         "iteration_id": "power",
         "shift_inverse_keff": None,
         "placement": "structured",
     }
+    if mode == "selected":
+        options.update(warmup=None, repetitions=1, profile=False)
     options.update(overrides)
     return runner._plan(mode, solver_case, **options)
 
@@ -54,7 +58,7 @@ def _request(
         "axial_layers": axial_layers,
         "case_id": case_id,
         "placement": "structured",
-        "requested_threads": 1,
+        "requested_threads": DEFAULT_STUDY_PROTOCOL.requested_threads,
         "iteration_id": "power",
         "shift_inverse_keff": None,
         "kind": "measurement",
@@ -74,8 +78,8 @@ def _launch_outcome(groups: int, axial_layers: int, **overrides):
         "requested_threads": 1,
         "kind": "measurement",
         "repetition": 0,
-        "timeout_seconds": orchestration.DEFAULT_TIMEOUT_SECONDS,
-        "address_space_limit_bytes": (orchestration.DEFAULT_ADDRESS_SPACE_LIMIT_BYTES),
+        "timeout_seconds": DEFAULT_STUDY_PROTOCOL.timeout_seconds,
+        "address_space_limit_bytes": (DEFAULT_STUDY_PROTOCOL.address_space_limit_bytes),
         "placement": "structured",
     }
     options.update(overrides)
@@ -421,12 +425,58 @@ def test_study_modes_and_cases_are_exact() -> None:
     assert direct.output_name == "baseline_direct.json"
     assert gmres.output_name == "baseline_gmres_jacobi.json"
     assert bicgstab.output_name == "baseline_bicgstab_jacobi.json"
-    assert len(direct.requests) == len(gmres.requests) == len(bicgstab.requests) == 60
+    assert len(direct.requests) == 36
+    assert len(gmres.requests) == len(bicgstab.requests) == 60
     assert {request.requested_threads for request in gmres.requests} == {1}
     expected_warmup = _request(6, 2, DIRECT_CASE_ID, record=False)
-    assert direct.requests[::5] == (expected_warmup,) * 12
+    assert direct.requests[::3] == (expected_warmup,) * 12
     with pytest.raises(ValueError, match="one of"):
         _plan("baseline", "gmres_ilu")
+
+
+def test_selected_protocol_requires_explicit_measurement_scope() -> None:
+    """Ad hoc selections cannot silently inherit campaign-sized work."""
+    options = {
+        "workloads": ((6, 2),),
+        "warmup": runner._UNSPECIFIED,
+        "output_name": "selected.json",
+        "repetitions": None,
+        "profile": None,
+        "iteration_id": "power",
+        "shift_inverse_keff": None,
+        "placement": "structured",
+    }
+    with pytest.raises(ValueError, match="--warmup or --no-warmup"):
+        runner._plan("selected", None, **options)
+    options["warmup"] = None
+    with pytest.raises(ValueError, match="--repetitions"):
+        runner._plan("selected", None, **options)
+    options["repetitions"] = 1
+    with pytest.raises(ValueError, match="--profile or --no-profile"):
+        runner._plan("selected", None, **options)
+
+
+def test_selected_cli_reports_all_missing_scope_choices(monkeypatch, capsys) -> None:
+    """The CLI reports omitted selected controls without a traceback."""
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "finite_volume_performance",
+            "selected",
+            "--workload",
+            "6",
+            "2",
+            "--output-name",
+            "selected.json",
+        ],
+    )
+    with pytest.raises(SystemExit, match="2"):
+        runner.parse_args()
+    error = capsys.readouterr().err
+    assert "--warmup/--no-warmup" in error
+    assert "--repetitions" in error
+    assert "--profile/--no-profile" in error
 
 
 def test_selected_protocol_accepts_reusable_workload_and_warmup_inputs() -> None:
@@ -598,8 +648,6 @@ def test_baseline_resume_runs_only_missing_endpoint_after_cheap_warmup() -> None
     assert resumed[0] == _request(6, 2, DIRECT_CASE_ID, record=False)
     assert [(request.kind, request.repetition) for request in resumed[1:]] == [
         ("measurement", 0),
-        ("measurement", 1),
-        ("measurement", 2),
         ("profile", None),
     ]
 
@@ -715,10 +763,14 @@ def test_selected_repetitions_print_summaries(
         "selected",
         tmp_path,
         workloads=((6, 2),),
+        warmup=None,
         repetitions=3,
+        profile=False,
         output_name="repeated.json",
     )
     assert len(results.read_document(path)["outcomes"]) == 3
     output = capsys.readouterr().out
+    assert "Job [1/3]" in output
+    assert "Job [3/3]" in output
     assert "Measurement medians:" in output
     assert "g6-z2-structured, direct" in output

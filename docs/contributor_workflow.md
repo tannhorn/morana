@@ -111,8 +111,8 @@ performance guarantees. Run a study explicitly only when it is in scope.
 Each maintained study owns its operating instructions and artifact guidance on
 its directory README. See the
 [finite-volume performance study README](https://github.com/tannhorn/morana/blob/main/studies/finite_volume_performance/README.md)
-for the current many-group smoke, baseline, selected-workload, and plotting
-commands.
+for the current many-group smoke, baseline, selected-workload, complete
+production-matrix, and plotting commands.
 
 Computationally expensive staged workflows, such as the OpenMC comparison,
 document their own reproduction commands and are run separately when in scope.

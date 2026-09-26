@@ -26,6 +26,10 @@ python -m studies.finite_volume_performance baseline --solver bicgstab_jacobi
 Every baseline workload uses the same unrecorded `(6 groups, 2 layers)`
 warm-up before its recorded workers. Each worker starts in a fresh process;
 numerical-library imports precede its measured solve interval.
+Smoke, baseline, and complete-matrix presets share one execution protocol:
+one numerical-library thread, a five-minute deadline, a 16 GiB address-space
+limit, the `(6, 2)` warm-up, and one profile per case. Direct cases record one
+timing observation; iterative cases record three.
 
 ## Selected workloads
 
@@ -36,6 +40,7 @@ explicitly. For example:
 ```bash
 python -m studies.finite_volume_performance selected \
   --solver gmres_jacobi --workload 18 6 --warmup 6 2 \
+  --repetitions 1 --no-profile \
   --timeout-seconds 300 --address-space-limit-gib 16 \
   --output-name selected_gmres_jacobi.json
 ```
@@ -49,19 +54,23 @@ seed interface, and routine smoke and baseline runs remain structured.
 ```bash
 python -m studies.finite_volume_performance selected \
   --solver bicgstab_jacobi --workload 18 12 --placement permuted \
+  --no-warmup --repetitions 1 --no-profile \
   --timeout-seconds 300 --address-space-limit-gib 16 \
   --output-name selected_permuted_bicgstab.json
 ```
 
-Each recorded workload is preceded by the requested unrecorded warm-up. The
-resource guards apply independently to every worker; a timeout or memory-limit
-failure is retained as study evidence. Repeat `--workload` to record several
-selections with the same solver and guards. By default selected runs record one
-observation per workload. Use `--repetitions` and `--profile` for a bounded
-repeated and profiled assessment. Runs with at least three successful
-measurements print timing and memory medians. Supported layer counts are
-2, 6, 12, and 24; both selected workloads and warm-ups use the frozen workload
-dimensions.
+Selected mode requires explicit warm-up, repetition, and profiling choices:
+pass either `--warmup GROUPS LAYERS` or `--no-warmup`, a positive
+`--repetitions` value, and either `--profile` or `--no-profile`. This prevents
+an ad hoc assessment from silently inheriting the complete production-matrix
+workload. Each recorded workload is preceded by the requested unrecorded
+warm-up. The shared five-minute and 16 GiB resource guards remain defaults and
+may be overridden explicitly. They apply independently to every worker; a
+timeout or memory-limit failure is retained as study evidence. Repeat
+`--workload` to record several selections with the same solver and guards.
+Runs with at least three successful measurements print timing and memory
+medians. Supported layer counts are 2, 6, 12, and 24; both selected workloads
+and warm-ups use the frozen workload dimensions.
 
 The frozen study controls permit 500 outer iterations for both placement
 families. This assessment ceiling does not change Morana's package defaults.
@@ -76,7 +85,8 @@ or adapts a shift while measuring. For example:
 python -m studies.finite_volume_performance selected \
   --solver gmres_jacobi --iteration wielandt --shift-inverse-keff 1.02 \
   --workload 36 6 --workload 18 12 --warmup 6 2 \
-  --repetitions 3 --timeout-seconds 300 --address-space-limit-gib 16 \
+  --repetitions 3 --profile \
+  --timeout-seconds 300 --address-space-limit-gib 16 \
   --output-name shifted_gmres_jacobi.json
 ```
 
@@ -93,6 +103,42 @@ require the same warm-up. Other independent workloads continue. `--resume`
 retains these terminal decisions and executes only missing work, including the
 warm-up when only a profile remains. To retry a terminal failure, start a new
 run with a separate output name.
+
+## Complete production-path assessment
+
+Run the frozen complete production-path matrix with:
+
+```bash
+python -m studies.finite_volume_performance.production_matrix
+```
+
+The launcher covers the three selected workload sizes, structured and
+canonical seed-0 permuted placement, direct, Jacobi-GMRES, and
+Jacobi-BiCGSTAB solves, and ordinary and fixed-Wielandt criticality. It owns
+the six checked workload-specific shifts, uses one direct or three iterative
+timing repetitions, records one function profile for every matrix entry, and
+applies a five-minute and 16 GiB limit to each fresh worker. In total it plans
+36 matrix entries, 120 recorded workers, and 36 unrecorded warm-ups.
+Direct solves are retained as expensive reference observations, while three
+iterative observations expose timing variability and support the study's
+median, minimum, and maximum summaries.
+
+Inspect the complete plan without starting workers:
+
+```bash
+python -m studies.finite_volume_performance.production_matrix --dry-run
+```
+
+If execution is interrupted, resume the complete campaign with:
+
+```bash
+python -m studies.finite_volume_performance.production_matrix --resume
+```
+
+A fresh run refuses to overwrite any existing matrix document. Resume checks
+and completes existing documents and starts entries whose output documents do
+not yet exist. Terminal worker failures remain evidence and are not retried;
+use a separate output directory for a deliberately new campaign.
 
 ## Generated artifacts and workload scope
 
