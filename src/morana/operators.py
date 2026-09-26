@@ -311,9 +311,12 @@ class CrossSectionData:
     Notes
     -----
     This container preserves slice-local active-cell numbering. Global
-    node-major packing is created only by the assembly helpers. Layers and
-    their ``CrossSectionLayerData`` entries are immutable checked input
-    snapshots for one assembly scope.
+    node-major packing is created only by the assembly helpers. If ``N[z]`` is
+    the active-cell count in bottom-to-top layer ``z`` and ``G`` is the group
+    count, the public assemblers map ``(z, active_id, group)`` to
+    ``(sum(N[j] for j < z) + active_id) * G + group``. Layers and their
+    ``CrossSectionLayerData`` entries are immutable checked input snapshots for
+    one assembly scope.
     """
 
     layers: tuple[CrossSectionLayerData, ...]
@@ -658,9 +661,12 @@ def assemble_fission_matrix(
     Returns
     -------
     scipy.sparse.csr_matrix
-        Fresh mutable node-major, group-fastest fission-emission matrix. For
-        cell ``n``, it maps source group ``g_from`` to destination group
-        ``g_to`` with ``fission_transfer[g_from, g_to, n] * volume[n]``.
+        Fresh mutable square fission-emission matrix with dimension
+        ``groups * sum(layer.active_cells for layer in cross_sections.layers)``.
+        Row and column indices use
+        ``(sum(N[j] for j < z) + active_id) * groups + group``. Within one
+        cell, row ``g_to`` and column ``g_from`` contain
+        ``fission_transfer[g_from, g_to, active_id] * cell_volume``.
 
     Raises
     ------
@@ -859,7 +865,10 @@ def assemble_loss_matrix(
     Returns
     -------
     scipy.sparse.csr_matrix
-        Fresh mutable node-major, group-fastest global loss matrix. It combines
+        Fresh mutable square global loss matrix with dimension
+        ``groups * sum(layer.active_cells for layer in cross_sections.layers)``.
+        Row and column indices use
+        ``(sum(N[j] for j < z) + active_id) * groups + group``. It combines
         removal, scattering coupling, radial/axial leakage, and resolved
         boundary response.
 
@@ -964,9 +973,12 @@ def assemble_source_rhs(
     Returns
     -------
     numpy.ndarray
-        Fresh mutable node-major, group-fastest global source vector. Each
-        volumetric source value is multiplied by its selected cell volume. If
-        no volumetric source is configured, the vector is zero.
+        Fresh mutable vector of length
+        ``groups * sum(layer.active_cells for layer in cross_sections.layers)``.
+        Index ``(z, active_id, group)`` is
+        ``(sum(N[j] for j < z) + active_id) * groups + group``. Each volumetric
+        source value is multiplied by its selected cell volume. If no
+        volumetric source is configured, the vector is zero.
 
     Raises
     ------
@@ -1049,9 +1061,12 @@ def assemble_boundary_rhs(
     Returns
     -------
     numpy.ndarray
-        Fresh mutable node-major, group-fastest global boundary-source vector.
-        It contains only additive prescribed-flux and imposed-current boundary
-        terms, integrated over their selected exposed faces.
+        Fresh mutable vector of length
+        ``groups * sum(layer.active_cells for layer in cross_sections.layers)``.
+        Index ``(z, active_id, group)`` is
+        ``(sum(N[j] for j < z) + active_id) * groups + group``. It contains
+        only additive prescribed-flux and imposed-current boundary terms,
+        integrated over their selected exposed faces.
 
     Raises
     ------

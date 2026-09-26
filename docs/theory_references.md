@@ -100,10 +100,24 @@ variable-height axial stack.
 ### Ordering and assembly
 
 Public group-indexed data are ordered fast to thermal. Layered source and result
-arrays are group-major with shape `(G, N)`, while material transfer matrices
-use `(g_from, g_to)`. Global finite-volume operators use node-major,
-group-fastest packing, `I(n, g) = nG + g`, where $n$ is a packed active-node
-index.
+arrays are group-major with shape `(G, N[z])`, while material transfer matrices
+use `(g_from, g_to)`. Here $N[z]$ is the number of active cells in
+bottom-to-top layer $z$. The slice-local active ID $a$ follows the active
+subset of the planar mesh's documented order. With layer node offset
+$O_z=\sum_{j<z}N[j]$, every global finite-volume operator and right-hand side
+uses node-major, group-fastest packing
+
+$$
+I(z,a,g)=(O_z+a)G+g.
+$$
+
+Thus layers vary slowest and group varies fastest, including when the axial
+stack is ragged. The complete vector length is $G\sum_zN[z]$ and every global
+matrix has that value as both dimensions. A matrix row identifies the balance
+equation's destination group and cell; a column identifies the candidate
+flux's source group and cell. The
+[operator-assembly guide](operator_assembly.md#exact-degree-of-freedom-mapping)
+gives the public geometry lookups and explicit packing and unpacking recipe.
 
 ### Scattering, fission, and operator split
 
@@ -285,8 +299,9 @@ $\mathcal{C}$ and $F$ to the cell balances.
 A geometric active cell is $c=(m,k)$, where $m$ is its full-lattice
 `planar_id` and $k$ is its `axial_index`. The same $m$ denotes the same planar
 position in every layer, whereas `active_id` is slice-local and can differ
-between layers. The packed-node index $n(c)$ appears only in assembled vectors
-and matrices.
+between layers. For the active ID $a$ corresponding to $m$ in layer $k$, the
+packed-node index used below is $n(c)=O_k+a$; the complete degree-of-freedom
+index is $I(k,a,g)=n(c)G+g$.
 
 Let the cell have volume $V_c$, group-$g$ cell-average flux $\phi_{g,c}$,
 diffusion coefficient $D_{g,c}$, derived removal cross section

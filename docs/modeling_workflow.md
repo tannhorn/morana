@@ -392,7 +392,12 @@ verification, or integration with another solver, `morana.operators` exposes
 the compact cross-section, loss, fission, volumetric-source, and boundary-source
 assembly stages independently. See
 [direct finite-volume operator assembly](operator_assembly.md) for their data
-flow, packing, prerequisites, and ownership rules.
+flow, exact `(axial_index, active_id, group)` packing, prerequisites, and
+ownership rules. These products are the supported boundary for external
+numerical-method work, but an external candidate vector and its diagnostics do
+not become a checked Morana `Result`; use the public solve functions when
+Morana-owned convergence, admissibility, balance, provenance, and
+normalization checks are required.
 
 ## Capability boundaries
 
