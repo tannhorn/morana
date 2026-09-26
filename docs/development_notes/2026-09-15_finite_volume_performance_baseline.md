@@ -2,6 +2,10 @@
 
 *Recorded 2026-09-15.*
 
+*Updated 2026-09-26: linked the completed production-policy study and updated
+current runner terminology after the maintained `baseline` preset was renamed
+`scaling`.*
+
 This note records a controlled workstation study used to guide finite-volume
 development. It is not a portable performance guarantee or a comparison of
 hardware or solver libraries.
@@ -57,6 +61,11 @@ function profiling. If Morana-side assembly or result work is then dominant,
 that work should take priority over stronger preconditioning. This study does
 not justify threaded-BLAS tuning, a parallel direct backend, or a broader
 solver-policy surface.
+
+That experiment and the later bounded solver screen are concluded in the
+[production-policy study](2026-09-26_finite_volume_production_policy.md).
+This section records the earlier decision point rather than the current solver
+recommendation.
 
 ## Retained study
 
