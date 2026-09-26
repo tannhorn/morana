@@ -39,12 +39,13 @@ class WorkerRequest:
     groups: int
     axial_layers: int
     case_id: str
-    requested_threads: int = 1
-    iteration_id: str = "power"
-    shift_inverse_keff: float | None = None
-    kind: str = "measurement"
-    repetition: int | None = None
-    record: bool = True
+    placement: str
+    requested_threads: int
+    iteration_id: str
+    shift_inverse_keff: float | None
+    kind: str
+    repetition: int | None
+    record: bool
 
 
 @dataclass(frozen=True)
@@ -89,19 +90,22 @@ def _execution_groups(
     case_id: str,
     warmup: tuple[int, int] | None,
     *,
-    repetitions: int = 1,
-    profile: bool = False,
-    iteration_id: str = "power",
-    shift_inverse_keff: float | None = None,
+    repetitions: int,
+    profile: bool,
+    iteration_id: str,
+    shift_inverse_keff: float | None,
+    placement: str,
 ) -> tuple[ExecutionGroup, ...]:
     """Build the same checked worker protocol for every selected workload."""
     # pylint: disable-next=import-outside-toplevel,protected-access
     from studies.finite_volume_performance.workload import (
         _require_group_count,
         _require_axial_layers,
+        _require_placement,
     )
 
     iteration_record(iteration_id, shift_inverse_keff)
+    _require_placement(placement)
     if len(set(workloads)) != len(workloads):
         raise ValueError("selected workloads must be unique")
     if isinstance(repetitions, bool) or not isinstance(repetitions, int):
@@ -112,7 +116,19 @@ def _execution_groups(
         _require_group_count(groups)
         _require_axial_layers(layers)
     warmup_request = (
-        None if warmup is None else WorkerRequest(*warmup, case_id, record=False)
+        None
+        if warmup is None
+        else WorkerRequest(
+            *warmup,
+            case_id,
+            placement,
+            1,
+            "power",
+            None,
+            "measurement",
+            None,
+            False,
+        )
     )
     result = []
     for groups, layers in workloads:
@@ -120,8 +136,13 @@ def _execution_groups(
             groups,
             layers,
             case_id,
-            iteration_id=iteration_id,
-            shift_inverse_keff=shift_inverse_keff,
+            placement,
+            1,
+            iteration_id,
+            shift_inverse_keff,
+            "measurement",
+            None,
+            True,
         )
         measurements = tuple(
             replace(request, repetition=index) for index in range(repetitions)
@@ -134,15 +155,16 @@ def _execution_groups(
 
 def _plan(
     mode: str,
-    solver_case: str | None = None,
+    solver_case: str | None,
     *,
-    workloads: tuple[tuple[int, int], ...] = (),
-    warmup: tuple[int, int] | None = None,
-    output_name: str | None = None,
-    repetitions: int = 1,
-    profile: bool = False,
-    iteration_id: str = "power",
-    shift_inverse_keff: float | None = None,
+    workloads: tuple[tuple[int, int], ...],
+    warmup: tuple[int, int] | None,
+    output_name: str | None,
+    repetitions: int,
+    profile: bool,
+    iteration_id: str,
+    shift_inverse_keff: float | None,
+    placement: str,
 ) -> RunPlan:
     """Resolve one CLI mode into an explicit immutable execution plan."""
     selected_options = (
@@ -153,6 +175,7 @@ def _plan(
         profile,
         iteration_id != "power",
         shift_inverse_keff is not None,
+        placement != "structured",
     )
     if mode == "smoke":
         if solver_case is not None:
@@ -162,7 +185,16 @@ def _plan(
         return RunPlan(
             mode,
             "smoke.json",
-            _execution_groups(((6, 2),), DIRECT_CASE_ID, (6, 2), profile=True),
+            _execution_groups(
+                ((6, 2),),
+                DIRECT_CASE_ID,
+                (6, 2),
+                repetitions=1,
+                profile=True,
+                iteration_id="power",
+                shift_inverse_keff=None,
+                placement=placement,
+            ),
         )
     if mode == "baseline":
         if any(selected_options):
@@ -180,6 +212,9 @@ def _plan(
                 _BASELINE_WARMUP,
                 repetitions=3,
                 profile=True,
+                iteration_id="power",
+                shift_inverse_keff=None,
+                placement=placement,
             ),
         )
     if mode == "selected":
@@ -201,6 +236,7 @@ def _plan(
                 profile=profile,
                 iteration_id=iteration_id,
                 shift_inverse_keff=shift_inverse_keff,
+                placement=placement,
             ),
         )
     raise ValueError("mode must be 'smoke', 'baseline', or 'selected'")
@@ -216,6 +252,7 @@ def _request_id(request: WorkerRequest) -> str:
         requested_threads=request.requested_threads,
         kind=request.kind,
         repetition=request.repetition,
+        placement=request.placement,
     )
 
 
@@ -259,7 +296,7 @@ def _workloads(requests: Iterable[WorkerRequest]) -> list[dict[str, object]]:
 
     dimensions = []
     for request in requests:
-        candidate = (request.groups, request.axial_layers)
+        candidate = (request.groups, request.axial_layers, request.placement)
         if candidate not in dimensions:
             dimensions.append(candidate)
     return [workload_record(*item) for item in dimensions]
@@ -312,6 +349,7 @@ def run(
     profile: bool = False,
     iteration_id: str = "power",
     shift_inverse_keff: float | None = None,
+    placement: str = "structured",
 ) -> Path:
     """Execute one maintained mode and return its checked JSON path."""
     plan = _plan(
@@ -324,6 +362,7 @@ def run(
         profile=profile,
         iteration_id=iteration_id,
         shift_inverse_keff=shift_inverse_keff,
+        placement=placement,
     )
     workload_records = _workloads(plan.requests)
     output_path = output_dir / plan.output_name
@@ -351,6 +390,7 @@ def run(
             print(
                 f"  {request.case_id}, g={request.groups}, "
                 f"z={request.axial_layers}, {request.kind}, {disposition}"
+                f", placement={request.placement}"
             )
             outcome = launch_outcome(
                 request.groups,
@@ -363,6 +403,7 @@ def run(
                 repetition=request.repetition,
                 timeout_seconds=timeout_seconds,
                 address_space_limit_bytes=address_space_limit_bytes,
+                placement=request.placement,
             )
             if request.record or outcome["status"] == "failed":
                 outcomes.append(outcome)
@@ -414,6 +455,12 @@ def parse_args() -> argparse.Namespace:
         default=[],
         metavar=("GROUPS", "LAYERS"),
         help="workload to record in selected mode; may be repeated",
+    )
+    parser.add_argument(
+        "--placement",
+        choices=("structured", "permuted"),
+        default="structured",
+        help="placement family for selected workloads (default: structured)",
     )
     parser.add_argument(
         "--warmup",
@@ -474,4 +521,5 @@ def main() -> None:
         profile=arguments.profile,
         iteration_id=arguments.iteration,
         shift_inverse_keff=arguments.shift_inverse_keff,
+        placement=arguments.placement,
     )

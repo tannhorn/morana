@@ -19,7 +19,7 @@ ITERATION_IDS = (POWER_ITERATION_ID, WIELANDT_ITERATION_ID)
 
 
 def iteration_record(
-    iteration_id: str, shift_inverse_keff: float | None = None
+    iteration_id: str, shift_inverse_keff: float | None
 ) -> dict[str, object]:
     """Return one checked ordinary or explicitly fixed-shift policy."""
     if iteration_id == POWER_ITERATION_ID:
@@ -89,8 +89,8 @@ def _base_settings(case_id: str):
 
 def resolve_case(
     case_id: str,
-    iteration_id: str = POWER_ITERATION_ID,
-    shift_inverse_keff: float | None = None,
+    iteration_id: str,
+    shift_inverse_keff: float | None,
 ):
     """Return resolved settings and their checked iteration record."""
     from morana import PowerIterationSettings, WielandtShiftSettings

@@ -50,6 +50,11 @@ SYNTHETIC_MATERIAL_NAMES = (
     FUEL_REMOVAL_MATERIAL,
     LOCALIZED_ABSORBER_MATERIAL,
 )
+STRUCTURED_PLACEMENT = "structured"
+PERMUTED_PLACEMENT = "permuted"
+PLACEMENTS = (STRUCTURED_PLACEMENT, PERMUTED_PLACEMENT)
+PERMUTATION_ALGORITHM = "sha256-global-inventory-permutation-v1"
+PERMUTATION_SEED = 0
 
 CALIBRATION_SCALAR = 0.6004909682078956
 
@@ -175,6 +180,14 @@ FROZEN_PLACEMENT_DIGESTS = MappingProxyType(
         24: "b209b42df18f86bae8f55bf7ccdcc1720c8ac2ff70c943f6745fc1465e0369bd",
     }
 )
+FROZEN_PERMUTED_PLACEMENT_DIGESTS = MappingProxyType(
+    {
+        2: "1ab5fda069fc8f8944f5a1af90b882a58c580e0970581b292e69b8ac16ca4886",
+        6: "da07441dff019d1c9e7e34f05aab50cd687fd94049d6e286c499e6ba7233da9b",
+        12: "fab3f781ae3f880ec9cdc3e5e891fcb3ea5709836280194becf5f5cae9d664d8",
+        24: "dd314a4f62b2e2134b7fccc240c3768300e3920e1e16f2bd37652afb9d988894",
+    }
+)
 
 
 def _require_group_count(groups: int) -> int:
@@ -194,6 +207,13 @@ def _require_axial_layers(axial_layers: int) -> int:
     if axial_layers not in supported:
         raise ValueError(f"axial_layers must be one of {supported}")
     return axial_layers
+
+
+def _require_placement(placement: str) -> str:
+    """Require one maintained placement family."""
+    if placement not in PLACEMENTS:
+        raise ValueError(f"placement must be one of {PLACEMENTS}")
+    return placement
 
 
 def _material_modifiers(group_positions: np.ndarray, material_name: str) -> tuple[
@@ -364,9 +384,7 @@ def _synthetic_arrays(groups: int, material_name: str) -> dict[str, np.ndarray]:
     }
 
 
-def build_cross_sections(
-    groups: int, material_name: str = REFERENCE_MATERIAL
-) -> CrossSections:
+def build_cross_sections(groups: int, material_name: str) -> CrossSections:
     """Return one checked, role-named synthetic cross-section set.
 
     Parameters are deliberately limited to the frozen study group counts and
@@ -408,10 +426,61 @@ def _layer_roles(layer_index: int) -> tuple[str, ...]:
     return patterns[layer_index % len(patterns)]
 
 
-def build_configuration(groups: int, axial_layers: int) -> ProblemConfiguration:
+def _permutation_key(axial_index: int, ring: int, position: int) -> bytes:
+    """Return the versioned seed-0 ordering key for one spatial cell."""
+    identity = (
+        f"{PERMUTATION_ALGORITHM}\0{PERMUTATION_SEED}\0{axial_index}\0"
+        f"{ring}\0{position}"
+    )
+    return sha256(identity.encode("ascii")).digest()
+
+
+def _permuted_layers(baseline: ProblemConfiguration) -> tuple[MaterialSlice, ...]:
+    """Permute the complete structured inventory over all spatial cells."""
+    mesh = baseline.mesh
+    material_mesh = baseline.material_mesh
+    positions = tuple(
+        (axial_index, openmc_index)
+        for axial_index in range(material_mesh.n_axial_layers)
+        for openmc_index in mesh.openmc_indices
+    )
+    roles = sorted(
+        material_mesh.key_at(axial_index, openmc_index)
+        for axial_index, openmc_index in positions
+    )
+    ordered_positions = sorted(
+        positions,
+        key=lambda item: (
+            _permutation_key(item[0], item[1].ring, item[1].position),
+            item[0],
+            item[1].ring,
+            item[1].position,
+        ),
+    )
+    assignments = dict(zip(ordered_positions, roles, strict=True))
+    return tuple(
+        MaterialSlice(
+            mesh,
+            {
+                openmc_index: assignments[(axial_index, openmc_index)]
+                for openmc_index in mesh.openmc_indices
+            },
+            material_mesh.axial_layer_heights[axial_index],
+        )
+        for axial_index in range(material_mesh.n_axial_layers)
+    )
+
+
+def build_configuration(
+    groups: int,
+    axial_layers: int,
+    *,
+    placement: str,
+) -> ProblemConfiguration:
     """Build one heterogeneous, role-named synthetic criticality problem."""
     groups = _require_group_count(groups)
     axial_layers = _require_axial_layers(axial_layers)
+    placement = _require_placement(placement)
     mesh = HexPlanarMesh(num_rings=NUM_PLANAR_RINGS, pitch=LATTICE_PITCH_CM)
     materials = {
         material_name: Material(
@@ -430,7 +499,7 @@ def build_configuration(groups: int, axial_layers: int) -> ProblemConfiguration:
         )
         for layer_index in range(axial_layers)
     )
-    return ProblemConfiguration(
+    structured = ProblemConfiguration(
         mesh=mesh,
         materials=materials,
         material_mesh=MaterialMesh.stack(layers),
@@ -441,6 +510,15 @@ def build_configuration(groups: int, axial_layers: int) -> ProblemConfiguration:
         ),
         name=f"synthetic_heterogeneous_many_group_g{groups}_z{axial_layers}",
     )
+    if placement == STRUCTURED_PLACEMENT:
+        return structured
+    return ProblemConfiguration(
+        mesh=mesh,
+        materials=materials,
+        material_mesh=MaterialMesh.stack(_permuted_layers(structured)),
+        boundary=structured.boundary,
+        name=f"synthetic_permuted_many_group_g{groups}_z{axial_layers}_seed0",
+    )
 
 
 def solve_settings() -> KeffSettings:
@@ -449,7 +527,7 @@ def solve_settings() -> KeffSettings:
         inner_linear_solve=DirectLinearSolveSettings(
             relative_residual_tolerance=1.0e-10
         ),
-        max_outer_iterations=200,
+        max_outer_iterations=500,
         keff_change_tolerance=1.0e-10,
         flux_change_tolerance=1.0e-10,
         keff_relative_residual_tolerance=1.0e-10,
@@ -479,9 +557,7 @@ def array_digest(array: np.ndarray) -> str:
     return digest.hexdigest()
 
 
-def generated_array_digests(
-    groups: int, material_name: str = REFERENCE_MATERIAL
-) -> dict[str, str]:
+def generated_array_digests(groups: int, material_name: str) -> dict[str, str]:
     """Return deterministic digests for one checked synthetic material."""
     cross_sections = build_cross_sections(groups, material_name)
     if cross_sections.fission is None:  # pragma: no cover - construction invariant
@@ -505,9 +581,9 @@ def generated_material_family_digest(groups: int) -> str:
     return digest.hexdigest()
 
 
-def generated_placement_digest(axial_layers: int) -> str:
+def generated_placement_digest(axial_layers: int, placement: str) -> str:
     """Return one deterministic digest of the role placement at every cell."""
-    configuration = build_configuration(6, axial_layers)
+    configuration = build_configuration(6, axial_layers, placement=placement)
     digest = sha256()
     for axial_index in range(axial_layers):
         for openmc_index in configuration.mesh.openmc_indices:
@@ -518,3 +594,15 @@ def generated_placement_digest(axial_layers: int) -> str:
             )
             digest.update(b"\0")
     return digest.hexdigest()
+
+
+def placement_record(placement: str) -> dict[str, object]:
+    """Return concise reproducibility provenance for one placement family."""
+    placement = _require_placement(placement)
+    if placement == STRUCTURED_PLACEMENT:
+        return {"kind": placement, "algorithm": None, "seed": None}
+    return {
+        "kind": placement,
+        "algorithm": PERMUTATION_ALGORITHM,
+        "seed": PERMUTATION_SEED,
+    }

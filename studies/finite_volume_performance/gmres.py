@@ -130,8 +130,9 @@ def measure_gmres_jacobi(
     requested_threads: int,
     kind: str,
     repetition: int | None,
-    iteration_id: str = "power",
-    shift_inverse_keff: float | None = None,
+    iteration_id: str,
+    shift_inverse_keff: float | None,
+    placement: str,
 ) -> dict[str, object]:
     """Measure one GMRES/Jacobi workload in the current fresh worker."""
     return _measure_iterative(
@@ -142,6 +143,7 @@ def measure_gmres_jacobi(
         repetition=repetition,
         iteration_id=iteration_id,
         shift_inverse_keff=shift_inverse_keff,
+        placement=placement,
         case_id=GMRES_JACOBI_CASE_ID,
         solve_attribute="_solve_gmres_system",
     )
@@ -154,8 +156,9 @@ def measure_bicgstab_jacobi(
     requested_threads: int,
     kind: str,
     repetition: int | None,
-    iteration_id: str = "power",
-    shift_inverse_keff: float | None = None,
+    iteration_id: str,
+    shift_inverse_keff: float | None,
+    placement: str,
 ) -> dict[str, object]:
     """Measure one BiCGSTAB/Jacobi workload in the current fresh worker."""
     return _measure_iterative(
@@ -166,6 +169,7 @@ def measure_bicgstab_jacobi(
         repetition=repetition,
         iteration_id=iteration_id,
         shift_inverse_keff=shift_inverse_keff,
+        placement=placement,
         case_id=BICGSTAB_JACOBI_CASE_ID,
         solve_attribute="_solve_bicgstab_system",
     )
@@ -182,6 +186,7 @@ def _measure_iterative(
     shift_inverse_keff: float | None,
     case_id: str,
     solve_attribute: str,
+    placement: str,
 ) -> dict[str, object]:
     """Measure one checked iterative workload in the current fresh worker."""
     if kind not in {"measurement", "profile"}:
@@ -206,7 +211,9 @@ def _measure_iterative(
         capture.rss["completed_result"] = measurement._current_rss_bytes()
         return result, capture.rss
 
-    result, common = measurement._measure_worker_call(groups, axial_layers, solve)
+    result, common = measurement._measure_worker_call(
+        groups, axial_layers, solve, placement=placement
+    )
     report = result.execution_report
     if capture.rhs_solve_count != report.iterations:
         raise RuntimeError("iterative RHS-solve count does not match outer iterations")
@@ -217,11 +224,12 @@ def _measure_iterative(
         groups,
         axial_layers,
         case_id,
+        common=common,
+        profile=profile,
         iteration=iteration,
         requested_threads=requested_threads,
         kind=kind,
         repetition=repetition,
-        common=common,
         solve_fields={
             "rss_checkpoints_bytes": capture.rss,
             "timings_seconds": capture.wall_seconds,
@@ -237,5 +245,5 @@ def _measure_iterative(
             ],
             "numerical_checks": measurement._numerical_record(result),
         },
-        profile=profile,
+        placement=placement,
     )

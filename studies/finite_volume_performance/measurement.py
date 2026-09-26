@@ -30,6 +30,7 @@ from morana.solvers import finite_volume
 from studies.finite_volume_performance.orchestration import (
     THREAD_ENVIRONMENT_VARIABLES,
     outcome_fields,
+    workload_identifier,
 )
 from studies.finite_volume_performance.cases import (
     DIRECT_CASE_ID,
@@ -39,8 +40,11 @@ from studies.finite_volume_performance.results import STAGE_NAMES
 from studies.finite_volume_performance.workload import (
     FROZEN_ARRAY_DIGESTS,
     FROZEN_MATERIAL_FAMILY_DIGESTS,
+    FROZEN_PERMUTED_PLACEMENT_DIGESTS,
     FROZEN_PLACEMENT_DIGESTS,
+    PERMUTED_PLACEMENT,
     build_configuration,
+    placement_record,
 )
 
 _EXPECTED_CALLS = {
@@ -417,6 +421,7 @@ def _measure_worker_call(
     groups: int,
     axial_layers: int,
     solve: Callable[[Any], tuple[Result, dict[str, int]]],
+    placement: str,
 ) -> tuple[Result, dict[str, object]]:
     """Measure shared fresh-worker setup, execution, CPU time, and peak RSS."""
     started_at_utc = datetime.now(timezone.utc).isoformat()
@@ -424,7 +429,9 @@ def _measure_worker_call(
     environment = _environment_record()
     imported_rss = _current_rss_bytes()
     configuration_start = time.perf_counter_ns()
-    configuration = build_configuration(groups, axial_layers).snapshot()
+    configuration = build_configuration(
+        groups, axial_layers, placement=placement
+    ).snapshot()
     configuration_seconds = (time.perf_counter_ns() - configuration_start) / 1.0e9
     configuration_rss = _current_rss_bytes()
 
@@ -469,6 +476,7 @@ def _successful_outcome(
     common: dict[str, object],
     solve_fields: dict[str, object],
     profile: cProfile.Profile | None,
+    placement: str,
 ) -> dict[str, object]:
     """Combine the common identity and measurements for a successful worker."""
     return {
@@ -480,6 +488,7 @@ def _successful_outcome(
             requested_threads=requested_threads,
             kind=kind,
             repetition=repetition,
+            placement=placement,
         ),
         "status": "success",
         "started_at_utc": common["started_at_utc"],
@@ -503,8 +512,9 @@ def measure_direct(
     requested_threads: int,
     kind: str,
     repetition: int | None,
-    iteration_id: str = "power",
-    shift_inverse_keff: float | None = None,
+    iteration_id: str,
+    shift_inverse_keff: float | None,
+    placement: str,
 ) -> dict[str, object]:
     """Measure one workload in the current fresh worker process."""
     if kind not in {"measurement", "profile"}:
@@ -523,7 +533,9 @@ def measure_direct(
                 profile.disable()
         return result, recorder.checkpoints
 
-    result, common = _measure_worker_call(groups, axial_layers, solve)
+    result, common = _measure_worker_call(
+        groups, axial_layers, solve, placement=placement
+    )
     recorder.require_expected_calls()
     if recorder.factorization_handle is None:
         raise RuntimeError("study did not retain the direct factorization")
@@ -560,19 +572,27 @@ def measure_direct(
             "numerical_checks": _numerical_record(result),
         },
         profile=profile,
+        placement=placement,
     )
 
 
-def workload_record(groups: int, axial_layers: int) -> dict[str, object]:
+def workload_record(
+    groups: int, axial_layers: int, placement: str
+) -> dict[str, object]:
     """Return the frozen workload definition referenced by outcomes."""
     cells = 61 * axial_layers
     return {
-        "workload_id": f"g{groups}-z{axial_layers}",
+        "workload_id": workload_identifier(groups, axial_layers, placement),
         "groups": groups,
         "axial_layers": axial_layers,
         "active_cells": cells,
         "unknowns": cells * groups,
         "array_digests": dict(FROZEN_ARRAY_DIGESTS[groups]),
         "material_family_digest": FROZEN_MATERIAL_FAMILY_DIGESTS[groups],
-        "placement_digest": FROZEN_PLACEMENT_DIGESTS[axial_layers],
+        "placement": placement_record(placement),
+        "placement_digest": (
+            FROZEN_PERMUTED_PLACEMENT_DIGESTS[axial_layers]
+            if placement == PERMUTED_PLACEMENT
+            else FROZEN_PLACEMENT_DIGESTS[axial_layers]
+        ),
     }

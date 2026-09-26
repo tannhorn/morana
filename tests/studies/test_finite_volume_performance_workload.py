@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from math import ceil, exp
 
 import numpy as np
@@ -41,12 +42,13 @@ def test_frozen_calibration_and_digest_coverage() -> None:
     assert set(workload.FROZEN_ARRAY_DIGESTS) == set(workload.GROUP_COUNTS)
     assert set(workload.FROZEN_MATERIAL_FAMILY_DIGESTS) == set(workload.GROUP_COUNTS)
     assert set(workload.FROZEN_PLACEMENT_DIGESTS) == {2, 6, 12, 24}
+    assert set(workload.FROZEN_PERMUTED_PLACEMENT_DIGESTS) == {2, 6, 12, 24}
 
 
 @pytest.mark.parametrize("groups", workload.GROUP_COUNTS)
 def test_analytic_vectors_and_integrated_strengths(groups: int) -> None:
     """Every group count follows the frozen analytic shape and strength rules."""
-    cross_sections = workload.build_cross_sections(groups)
+    cross_sections = workload.build_cross_sections(groups, workload.REFERENCE_MATERIAL)
     positions = (np.arange(groups, dtype=np.float64) + 0.5) / groups
 
     np.testing.assert_array_equal(
@@ -78,7 +80,7 @@ def test_role_named_synthetic_materials_have_bounded_spectral_contrasts(
     groups: int,
 ) -> None:
     """Role labels select deterministic synthetic, rather than physical, data."""
-    reference = workload.build_cross_sections(groups)
+    reference = workload.build_cross_sections(groups, workload.REFERENCE_MATERIAL)
     leakage = workload.build_cross_sections(groups, workload.HIGH_LEAKAGE_MATERIAL)
     high = workload.build_cross_sections(groups, workload.HIGH_REACTIVITY_MATERIAL)
     removal = workload.build_cross_sections(groups, workload.FUEL_REMOVAL_MATERIAL)
@@ -123,7 +125,9 @@ def test_role_named_synthetic_materials_have_bounded_spectral_contrasts(
 @pytest.mark.parametrize("groups", workload.GROUP_COUNTS)
 def test_transfer_roles_span_weak_and_broad_synthetic_coupling(groups: int) -> None:
     """Fuel removal and high reactivity retain distinct transfer topologies."""
-    reference = workload.build_cross_sections(groups).sigma_s
+    reference = workload.build_cross_sections(
+        groups, workload.REFERENCE_MATERIAL
+    ).sigma_s
     broad = workload.build_cross_sections(
         groups, workload.HIGH_REACTIVITY_MATERIAL
     ).sigma_s
@@ -153,7 +157,7 @@ def test_transfer_roles_span_weak_and_broad_synthetic_coupling(groups: int) -> N
 def test_scattering_support_weights_and_density_at_72_groups() -> None:
     """The 72-group scattering matrix has the exact specified sparse support."""
     groups = 72
-    matrix = workload.build_cross_sections(groups).sigma_s
+    matrix = workload.build_cross_sections(groups, workload.REFERENCE_MATERIAL).sigma_s
     assert np.count_nonzero(matrix) == 1_475
     density = np.count_nonzero(matrix) / matrix.size
     assert density == pytest.approx(0.284_529_320_987_654_3)
@@ -174,7 +178,7 @@ def test_scattering_support_weights_and_density_at_72_groups() -> None:
 def test_fission_transfer_support_shape_and_density_at_72_groups() -> None:
     """Each synthetic role retains a broad, normalized fast emission band."""
     groups = 72
-    cross_sections = workload.build_cross_sections(groups)
+    cross_sections = workload.build_cross_sections(groups, workload.REFERENCE_MATERIAL)
     assert cross_sections.fission is not None
     matrix = cross_sections.fission.fission_transfer
     emission_groups = ceil(0.30 * groups)
@@ -192,7 +196,7 @@ def test_fission_transfer_support_shape_and_density_at_72_groups() -> None:
 def test_frozen_array_digests(groups: int) -> None:
     """Reference arrays and the full role-named family remain frozen."""
     assert (
-        workload.generated_array_digests(groups)
+        workload.generated_array_digests(groups, workload.REFERENCE_MATERIAL)
         == workload.FROZEN_ARRAY_DIGESTS[groups]
     )
     assert (
@@ -204,7 +208,9 @@ def test_frozen_array_digests(groups: int) -> None:
 @pytest.mark.parametrize("axial_layers", (2, 6, 12, 24))
 def test_configuration_is_complete_heterogeneous_geometry(axial_layers: int) -> None:
     """The builder creates a complete, role-named vacuum mini-core."""
-    configuration = workload.build_configuration(6, axial_layers)
+    configuration = workload.build_configuration(
+        6, axial_layers, placement=workload.STRUCTURED_PLACEMENT
+    )
     assert configuration.mesh.num_rings == 5
     assert configuration.mesh.n_cells == 61
     assert configuration.mesh.pitch == pytest.approx(27.94)
@@ -216,7 +222,7 @@ def test_configuration_is_complete_heterogeneous_geometry(axial_layers: int) -> 
     )
     assert set(configuration.materials) == set(workload.SYNTHETIC_MATERIAL_NAMES)
     assert (
-        workload.generated_placement_digest(axial_layers)
+        workload.generated_placement_digest(axial_layers, workload.STRUCTURED_PLACEMENT)
         == workload.FROZEN_PLACEMENT_DIGESTS[axial_layers]
     )
     assert configuration.source is None
@@ -224,10 +230,56 @@ def test_configuration_is_complete_heterogeneous_geometry(axial_layers: int) -> 
     configuration.check_no_unused_materials()
 
 
+@pytest.mark.parametrize("axial_layers", (2, 6, 12, 24))
+def test_canonical_permutation_is_frozen_and_preserves_inventory(
+    axial_layers: int,
+) -> None:
+    """The maintained permutation changes adjacency without changing roles."""
+    structured = workload.build_configuration(
+        6, axial_layers, placement=workload.STRUCTURED_PLACEMENT
+    )
+    permuted = workload.build_configuration(
+        6, axial_layers, placement=workload.PERMUTED_PLACEMENT
+    )
+
+    def roles(configuration):
+        return tuple(
+            configuration.material_mesh.key_at(layer, index)
+            for layer in range(axial_layers)
+            for index in configuration.mesh.openmc_indices
+        )
+
+    def adjacency(configuration, directions):
+        pairs = []
+        material_mesh = configuration.material_mesh
+        for layer in range(axial_layers):
+            for active_id in range(material_mesh.n_active_cells(layer)):
+                here = material_mesh.material_by_active_id(layer)[active_id]
+                for direction in directions:
+                    face = material_mesh.face(layer, active_id, direction)
+                    if face.kind == "internal":
+                        neighbor = material_mesh.material_by_active_id(
+                            face.neighbor_axial_index
+                        )[face.neighbor_active_id]
+                        pairs.append(tuple(sorted((here, neighbor))))
+        return Counter(pairs)
+
+    assert Counter(roles(permuted)) == Counter(roles(structured))
+    assert roles(permuted) != roles(structured)
+    assert adjacency(permuted, ("x+", "u+", "v+")) != adjacency(
+        structured, ("x+", "u+", "v+")
+    )
+    assert adjacency(permuted, ("top",)) != adjacency(structured, ("top",))
+    assert (
+        workload.generated_placement_digest(axial_layers, workload.PERMUTED_PLACEMENT)
+        == workload.FROZEN_PERMUTED_PLACEMENT_DIGESTS[axial_layers]
+    )
+
+
 def test_workload_settings_are_exact_direct_power_controls() -> None:
     """The builder returns the fixed direct-power settings without fallback."""
     settings = workload.solve_settings()
-    assert settings.max_outer_iterations == 200
+    assert settings.max_outer_iterations == 500
     assert settings.keff_change_tolerance == 1.0e-10
     assert settings.flux_change_tolerance == 1.0e-10
     assert settings.keff_relative_residual_tolerance == 1.0e-10
@@ -241,7 +293,11 @@ def test_workload_settings_are_exact_direct_power_controls() -> None:
 def test_smoke_workload_solves_with_frozen_numerical_controls() -> None:
     """The inexpensive workload remains a numerically checked solve path."""
     result = solve_keff(
-        workload.build_configuration(6, workload.SMOKE_AXIAL_LAYER_COUNT),
+        workload.build_configuration(
+            6,
+            workload.SMOKE_AXIAL_LAYER_COUNT,
+            placement=workload.STRUCTURED_PLACEMENT,
+        ),
         FissionSourceNormalization(rate=1.0),
         workload.solve_settings(),
     )
@@ -256,10 +312,34 @@ def test_smoke_workload_solves_with_frozen_numerical_controls() -> None:
 @pytest.mark.parametrize(
     ("builder", "value", "error"),
     (
-        (workload.build_cross_sections, True, TypeError),
-        (workload.build_cross_sections, 12, ValueError),
-        (lambda value: workload.build_configuration(6, value), False, TypeError),
-        (lambda value: workload.build_configuration(6, value), 3, ValueError),
+        (
+            lambda value: workload.build_cross_sections(
+                value, workload.REFERENCE_MATERIAL
+            ),
+            True,
+            TypeError,
+        ),
+        (
+            lambda value: workload.build_cross_sections(
+                value, workload.REFERENCE_MATERIAL
+            ),
+            12,
+            ValueError,
+        ),
+        (
+            lambda value: workload.build_configuration(
+                6, value, placement=workload.STRUCTURED_PLACEMENT
+            ),
+            False,
+            TypeError,
+        ),
+        (
+            lambda value: workload.build_configuration(
+                6, value, placement=workload.STRUCTURED_PLACEMENT
+            ),
+            3,
+            ValueError,
+        ),
     ),
 )
 def test_workload_rejects_unfrozen_dimensions(builder, value, error) -> None:

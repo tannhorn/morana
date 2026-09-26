@@ -29,27 +29,76 @@ from studies.finite_volume_performance.cases import (
 )
 
 
+def _plan(mode: str, solver_case: str | None = None, **overrides) -> runner.RunPlan:
+    """Resolve a test plan while keeping production planning inputs explicit."""
+    options = {
+        "workloads": (),
+        "warmup": None,
+        "output_name": None,
+        "repetitions": 1,
+        "profile": False,
+        "iteration_id": "power",
+        "shift_inverse_keff": None,
+        "placement": "structured",
+    }
+    options.update(overrides)
+    return runner._plan(mode, solver_case, **options)
+
+
+def _request(
+    groups: int, axial_layers: int, case_id: str, **overrides
+) -> runner.WorkerRequest:
+    """Build one complete resolved request for plan assertions."""
+    fields = {
+        "groups": groups,
+        "axial_layers": axial_layers,
+        "case_id": case_id,
+        "placement": "structured",
+        "requested_threads": 1,
+        "iteration_id": "power",
+        "shift_inverse_keff": None,
+        "kind": "measurement",
+        "repetition": None,
+        "record": True,
+    }
+    fields.update(overrides)
+    return runner.WorkerRequest(**fields)
+
+
+def _launch_outcome(groups: int, axial_layers: int, **overrides):
+    """Launch a test worker with every resolved control explicit."""
+    options = {
+        "case_id": DIRECT_CASE_ID,
+        "iteration_id": "power",
+        "shift_inverse_keff": None,
+        "requested_threads": 1,
+        "kind": "measurement",
+        "repetition": 0,
+        "timeout_seconds": orchestration.DEFAULT_TIMEOUT_SECONDS,
+        "address_space_limit_bytes": (orchestration.DEFAULT_ADDRESS_SPACE_LIMIT_BYTES),
+        "placement": "structured",
+    }
+    options.update(overrides)
+    return orchestration.launch_outcome(groups, axial_layers, **options)
+
+
 @pytest.fixture(scope="module")
 def direct_observation() -> dict[str, object]:
     """Return one direct measurement from an isolated interpreter."""
-    return orchestration.launch_outcome(
+    return _launch_outcome(
         6,
         2,
         case_id=DIRECT_CASE_ID,
-        requested_threads=1,
-        kind="measurement",
-        repetition=0,
     )
 
 
 @pytest.fixture(scope="module")
 def profile_observation() -> dict[str, object]:
     """Return one separately profiled direct observation."""
-    return orchestration.launch_outcome(
+    return _launch_outcome(
         6,
         2,
         case_id=DIRECT_CASE_ID,
-        requested_threads=1,
         kind="profile",
         repetition=None,
     )
@@ -58,33 +107,28 @@ def profile_observation() -> dict[str, object]:
 @pytest.fixture(scope="module")
 def gmres_observation() -> dict[str, object]:
     """Return one GMRES/Jacobi measurement."""
-    return orchestration.launch_outcome(
+    return _launch_outcome(
         6,
         2,
         case_id=GMRES_JACOBI_CASE_ID,
-        requested_threads=1,
-        kind="measurement",
-        repetition=0,
     )
 
 
 @pytest.fixture(scope="module")
 def bicgstab_observation() -> dict[str, object]:
     """Return one BiCGSTAB/Jacobi measurement."""
-    return orchestration.launch_outcome(
+    return _launch_outcome(
         6,
         2,
         case_id=BICGSTAB_JACOBI_CASE_ID,
-        requested_threads=1,
-        kind="measurement",
-        repetition=0,
     )
 
 
 def _document(outcomes: list[dict[str, object]]) -> dict[str, object]:
     """Build a checked smoke-size document for tests."""
     return results.build_document(
-        workloads=[measurement.workload_record(6, 2)], outcomes=outcomes
+        workloads=[measurement.workload_record(6, 2, "structured")],
+        outcomes=outcomes,
     )
 
 
@@ -114,13 +158,10 @@ def test_launcher_rejects_invalid_resource_limits(
 ) -> None:
     """Invalid resource guards fail before a worker is launched."""
     with pytest.raises(error):
-        orchestration.launch_outcome(
+        _launch_outcome(
             6,
             2,
             case_id=DIRECT_CASE_ID,
-            requested_threads=1,
-            kind="measurement",
-            repetition=0,
             **{field: value},
         )
 
@@ -128,36 +169,27 @@ def test_launcher_rejects_invalid_resource_limits(
 def test_launcher_requires_a_complete_iteration_policy() -> None:
     """Incomplete or inconsistent policies fail before a worker is created."""
     with pytest.raises(ValueError, match="requires an explicit fixed shift"):
-        orchestration.launch_outcome(
+        _launch_outcome(
             6,
             2,
             case_id=DIRECT_CASE_ID,
             iteration_id=WIELANDT_ITERATION_ID,
-            requested_threads=1,
-            kind="measurement",
-            repetition=0,
         )
     with pytest.raises(ValueError, match="only to Wielandt"):
-        orchestration.launch_outcome(
+        _launch_outcome(
             6,
             2,
             case_id=DIRECT_CASE_ID,
             shift_inverse_keff=0.95,
-            requested_threads=1,
-            kind="measurement",
-            repetition=0,
         )
 
 
 def test_launcher_terminates_and_reaps_timed_out_worker() -> None:
     """A deadline kills the isolated worker rather than leaving it running."""
-    outcome = orchestration.launch_outcome(
+    outcome = _launch_outcome(
         6,
         2,
         case_id=DIRECT_CASE_ID,
-        requested_threads=1,
-        kind="measurement",
-        repetition=0,
         timeout_seconds=1.0e-6,
     )
     assert outcome["status"] == "failed"
@@ -270,6 +302,11 @@ def test_checked_document_round_trip_is_deterministic(
         == workload.FROZEN_MATERIAL_FAMILY_DIGESTS[6]
     )
     assert workload_record["placement_digest"] == workload.FROZEN_PLACEMENT_DIGESTS[2]
+    assert workload_record["placement"] == {
+        "kind": "structured",
+        "algorithm": None,
+        "seed": None,
+    }
 
 
 def test_checked_document_rejects_broken_record_relationships(
@@ -313,7 +350,7 @@ def test_summary_keeps_iteration_policies_separate(
     """Ordinary and shifted measurements cannot form one timing population."""
     measurements = []
     for iteration in (
-        iteration_record("power"),
+        iteration_record("power", None),
         iteration_record("wielandt", 0.95),
     ):
         for index in range(3):
@@ -365,33 +402,36 @@ def test_factor_views_are_inspected_after_peak_rss_is_frozen(monkeypatch) -> Non
         requested_threads=1,
         kind="measurement",
         repetition=0,
+        iteration_id="power",
+        shift_inverse_keff=None,
+        placement="structured",
     )
     assert events == ["usage", "usage", "factor"]
 
 
 def test_study_modes_and_cases_are_exact() -> None:
     """Smoke and the three single-thread baselines have fixed definitions."""
-    smoke = runner._plan("smoke")
+    smoke = _plan("smoke")
     assert smoke.output_name == "smoke.json"
     assert [request.record for request in smoke.requests] == [False, True, True]
     assert {request.case_id for request in smoke.requests} == {DIRECT_CASE_ID}
-    direct = runner._plan("baseline")
-    gmres = runner._plan("baseline", GMRES_JACOBI_CASE_ID)
-    bicgstab = runner._plan("baseline", BICGSTAB_JACOBI_CASE_ID)
+    direct = _plan("baseline")
+    gmres = _plan("baseline", GMRES_JACOBI_CASE_ID)
+    bicgstab = _plan("baseline", BICGSTAB_JACOBI_CASE_ID)
     assert direct.output_name == "baseline_direct.json"
     assert gmres.output_name == "baseline_gmres_jacobi.json"
     assert bicgstab.output_name == "baseline_bicgstab_jacobi.json"
     assert len(direct.requests) == len(gmres.requests) == len(bicgstab.requests) == 60
     assert {request.requested_threads for request in gmres.requests} == {1}
-    expected_warmup = runner.WorkerRequest(6, 2, DIRECT_CASE_ID, record=False)
+    expected_warmup = _request(6, 2, DIRECT_CASE_ID, record=False)
     assert direct.requests[::5] == (expected_warmup,) * 12
     with pytest.raises(ValueError, match="one of"):
-        runner._plan("baseline", "gmres_ilu")
+        _plan("baseline", "gmres_ilu")
 
 
 def test_selected_protocol_accepts_reusable_workload_and_warmup_inputs() -> None:
     """Selected runs accept checked workload and warm-up dimensions."""
-    plan = runner._plan(
+    plan = _plan(
         "selected",
         workloads=((18, 6), (36, 12)),
         warmup=(6, 2),
@@ -399,18 +439,18 @@ def test_selected_protocol_accepts_reusable_workload_and_warmup_inputs() -> None
     )
     assert plan.output_name == "selected_direct.json"
     assert plan.requests == (
-        runner.WorkerRequest(6, 2, DIRECT_CASE_ID, record=False),
-        runner.WorkerRequest(18, 6, DIRECT_CASE_ID, repetition=0),
-        runner.WorkerRequest(6, 2, DIRECT_CASE_ID, record=False),
-        runner.WorkerRequest(36, 12, DIRECT_CASE_ID, repetition=0),
+        _request(6, 2, DIRECT_CASE_ID, record=False),
+        _request(18, 6, DIRECT_CASE_ID, repetition=0),
+        _request(6, 2, DIRECT_CASE_ID, record=False),
+        _request(36, 12, DIRECT_CASE_ID, repetition=0),
     )
     assert [item["workload_id"] for item in runner._workloads(plan.requests)] == [
-        "g6-z2",
-        "g18-z6",
-        "g36-z12",
+        "g6-z2-structured",
+        "g18-z6-structured",
+        "g36-z12-structured",
     ]
 
-    iterative = runner._plan(
+    iterative = _plan(
         "selected",
         GMRES_JACOBI_CASE_ID,
         workloads=((18, 12),),
@@ -419,28 +459,62 @@ def test_selected_protocol_accepts_reusable_workload_and_warmup_inputs() -> None
     )
     assert iterative.output_name == "selected_iterative.json"
     assert iterative.requests == (
-        runner.WorkerRequest(6, 2, GMRES_JACOBI_CASE_ID, record=False),
-        runner.WorkerRequest(18, 12, GMRES_JACOBI_CASE_ID, repetition=0),
+        _request(6, 2, GMRES_JACOBI_CASE_ID, record=False),
+        _request(18, 12, GMRES_JACOBI_CASE_ID, repetition=0),
     )
     with pytest.raises(ValueError, match="at least one workload"):
-        runner._plan("selected", output_name="empty.json")
+        _plan("selected", output_name="empty.json")
     with pytest.raises(ValueError, match="output name"):
-        runner._plan("selected", workloads=((6, 2),))
+        _plan("selected", workloads=((6, 2),))
     with pytest.raises(ValueError, match="groups must be"):
-        runner._plan("selected", workloads=((7, 2),), output_name="invalid.json")
+        _plan(
+            "selected",
+            workloads=((7, 2),),
+            output_name="invalid.json",
+        )
     with pytest.raises(ValueError, match="axial_layers must be"):
-        runner._plan("selected", workloads=((6, 0),), output_name="invalid.json")
+        _plan(
+            "selected",
+            workloads=((6, 0),),
+            output_name="invalid.json",
+        )
     with pytest.raises(ValueError, match="must be unique"):
-        runner._plan(
+        _plan(
             "selected",
             workloads=((6, 2), (6, 2)),
             output_name="duplicate.json",
         )
 
 
+def test_selected_protocol_exposes_only_the_canonical_permuted_placement() -> None:
+    """Selected runs can request the frozen permutation without seed controls."""
+    plan = _plan(
+        "selected",
+        workloads=((18, 6),),
+        warmup=(6, 2),
+        output_name="permuted.json",
+        placement="permuted",
+    )
+    assert plan.requests[0].placement == "permuted"
+    measured = plan.requests[1]
+    assert measured.placement == "permuted"
+    assert runner._request_id(measured).startswith("g18-z6-permuted-")
+    assert [item["workload_id"] for item in runner._workloads(plan.requests)] == [
+        "g6-z2-permuted",
+        "g18-z6-permuted",
+    ]
+    with pytest.raises(ValueError, match="placement must be"):
+        _plan(
+            "selected",
+            workloads=((18, 6),),
+            output_name="invalid.json",
+            placement="arbitrary",
+        )
+
+
 def test_selected_protocol_supports_repetition_and_profile() -> None:
     """One selected protocol supports repeated and profiled GMRES assessment."""
-    plan = runner._plan(
+    plan = _plan(
         "selected",
         GMRES_JACOBI_CASE_ID,
         workloads=((18, 12),),
@@ -450,21 +524,24 @@ def test_selected_protocol_supports_repetition_and_profile() -> None:
         output_name="repeated.json",
     )
     assert plan.requests == (
-        runner.WorkerRequest(6, 2, GMRES_JACOBI_CASE_ID, record=False),
-        runner.WorkerRequest(18, 12, GMRES_JACOBI_CASE_ID, repetition=0),
-        runner.WorkerRequest(18, 12, GMRES_JACOBI_CASE_ID, repetition=1),
-        runner.WorkerRequest(18, 12, GMRES_JACOBI_CASE_ID, repetition=2),
-        runner.WorkerRequest(18, 12, GMRES_JACOBI_CASE_ID, kind="profile"),
+        _request(6, 2, GMRES_JACOBI_CASE_ID, record=False),
+        _request(18, 12, GMRES_JACOBI_CASE_ID, repetition=0),
+        _request(18, 12, GMRES_JACOBI_CASE_ID, repetition=1),
+        _request(18, 12, GMRES_JACOBI_CASE_ID, repetition=2),
+        _request(18, 12, GMRES_JACOBI_CASE_ID, kind="profile"),
     )
     with pytest.raises(ValueError, match="positive"):
-        runner._plan(
-            "selected", workloads=((18, 12),), repetitions=0, output_name="bad.json"
+        _plan(
+            "selected",
+            workloads=((18, 12),),
+            repetitions=0,
+            output_name="bad.json",
         )
 
 
 def test_selected_protocol_accepts_an_explicit_wielandt_policy() -> None:
     """Any checked workload can carry an explicit fixed shift."""
-    plan = runner._plan(
+    plan = _plan(
         "selected",
         GMRES_JACOBI_CASE_ID,
         workloads=((18, 6),),
@@ -473,14 +550,12 @@ def test_selected_protocol_accepts_an_explicit_wielandt_policy() -> None:
         iteration_id=WIELANDT_ITERATION_ID,
         shift_inverse_keff=0.95,
     )
-    assert plan.requests[0] == runner.WorkerRequest(
-        6, 2, GMRES_JACOBI_CASE_ID, record=False
-    )
+    assert plan.requests[0] == _request(6, 2, GMRES_JACOBI_CASE_ID, record=False)
     measured = plan.requests[1]
     assert measured.iteration_id == WIELANDT_ITERATION_ID
     assert measured.shift_inverse_keff == pytest.approx(0.95)
     assert runner._request_id(measured).startswith(
-        "g18-z6-gmres_jacobi-wielandt-s0.95-"
+        "g18-z6-structured-gmres_jacobi-wielandt-s0.95-"
     )
     settings, iteration = resolve_case(
         GMRES_JACOBI_CASE_ID, WIELANDT_ITERATION_ID, 0.95
@@ -488,7 +563,7 @@ def test_selected_protocol_accepts_an_explicit_wielandt_policy() -> None:
     assert iteration == iteration_record(WIELANDT_ITERATION_ID, 0.95)
     assert settings.eigenvalue_iteration.shift_inverse_keff == pytest.approx(0.95)
     with pytest.raises(ValueError, match="requires an explicit fixed shift"):
-        runner._plan(
+        _plan(
             "selected",
             workloads=((18, 6),),
             output_name="missing-shift.json",
@@ -502,7 +577,7 @@ def test_result_reader_requires_an_exact_operator_policy(
     """An outcome cannot add fields to its complete operator policy."""
     invalid = deepcopy(direct_observation)
     invalid["eigenvalue_iteration"] = {
-        **iteration_record("power"),
+        **iteration_record("power", None),
         "shift_inverse_keff": 1.0,
     }
     with pytest.raises(ValueError, match="invalid"):
@@ -511,7 +586,7 @@ def test_result_reader_requires_an_exact_operator_policy(
 
 def test_baseline_resume_runs_only_missing_endpoint_after_cheap_warmup() -> None:
     """A partial baseline resumes its endpoint after the uniform cheap warm-up."""
-    plan = runner._plan("baseline")
+    plan = _plan("baseline")
     baseline = plan.requests
     completed = [
         {"outcome_id": runner._request_id(request), "status": "success"}
@@ -520,7 +595,7 @@ def test_baseline_resume_runs_only_missing_endpoint_after_cheap_warmup() -> None
     ]
     pending = runner._pending_groups(plan.groups, completed)
     resumed = (pending[0].warmup,) + pending[0].measurements
-    assert resumed[0] == runner.WorkerRequest(6, 2, DIRECT_CASE_ID, record=False)
+    assert resumed[0] == _request(6, 2, DIRECT_CASE_ID, record=False)
     assert [(request.kind, request.repetition) for request in resumed[1:]] == [
         ("measurement", 0),
         ("measurement", 1),
@@ -579,7 +654,7 @@ def test_terminal_failures_stop_dependent_workers(tmp_path, monkeypatch, warmup)
 
 def test_profile_only_resume_keeps_its_warmup():
     """Profiling follows the same warm-up protocol after an interrupted run."""
-    plan = runner._plan(
+    plan = _plan(
         "selected",
         workloads=((6, 6),),
         warmup=(6, 2),
@@ -603,7 +678,7 @@ def test_profile_only_resume_keeps_its_warmup():
 def test_unsupported_dimensions_fail_during_planning(dimensions, as_warmup):
     """Workloads and warm-ups obey the frozen workload's dimension checks."""
     with pytest.raises((TypeError, ValueError), match="axial_layers"):
-        runner._plan(
+        _plan(
             "selected",
             workloads=((6, 2),) if as_warmup else (dimensions,),
             warmup=dimensions if as_warmup else None,
@@ -626,10 +701,11 @@ def test_selected_repetitions_print_summaries(
                 groups,
                 axial_layers,
                 options["case_id"],
-                iteration=iteration_record(options["iteration_id"]),
+                iteration=iteration_record(options["iteration_id"], None),
                 requested_threads=options["requested_threads"],
                 kind=options["kind"],
                 repetition=options["repetition"],
+                placement=options["placement"],
             )
         )
         return outcome
@@ -645,4 +721,4 @@ def test_selected_repetitions_print_summaries(
     assert len(results.read_document(path)["outcomes"]) == 3
     output = capsys.readouterr().out
     assert "Measurement medians:" in output
-    assert "g6-z2, direct" in output
+    assert "g6-z2-structured, direct" in output

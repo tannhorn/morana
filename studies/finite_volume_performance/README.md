@@ -40,6 +40,19 @@ python -m studies.finite_volume_performance selected \
   --output-name selected_gmres_jacobi.json
 ```
 
+Add `--placement permuted` to use the single maintained seed-0 inventory
+permutation. It preserves every material-role count while changing planar and
+axial adjacency. Its SHA-256 ordering algorithm, seed, and placement digest are
+recorded with the workload. The runner intentionally provides no arbitrary
+seed interface, and routine smoke and baseline runs remain structured.
+
+```bash
+python -m studies.finite_volume_performance selected \
+  --solver bicgstab_jacobi --workload 18 12 --placement permuted \
+  --timeout-seconds 300 --address-space-limit-gib 16 \
+  --output-name selected_permuted_bicgstab.json
+```
+
 Each recorded workload is preceded by the requested unrecorded warm-up. The
 resource guards apply independently to every worker; a timeout or memory-limit
 failure is retained as study evidence. Repeat `--workload` to record several
@@ -49,6 +62,9 @@ repeated and profiled assessment. Runs with at least three successful
 measurements print timing and memory medians. Supported layer counts are
 2, 6, 12, and 24; both selected workloads and warm-ups use the frozen workload
 dimensions.
+
+The frozen study controls permit 500 outer iterations for both placement
+families. This assessment ceiling does not change Morana's package defaults.
 
 The ordinary operator is the default. To record a fixed-Wielandt case, select
 `--iteration wielandt` and provide its explicit nonnegative

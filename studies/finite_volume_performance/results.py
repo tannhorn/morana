@@ -23,7 +23,9 @@ from studies.finite_volume_performance.cases import (
 from studies.finite_volume_performance.orchestration import (
     THREAD_ENVIRONMENT_VARIABLES,
     outcome_identifier,
+    workload_identifier,
 )
+from studies.finite_volume_performance.workload import placement_record
 
 STAGE_NAMES = (
     "snapshot_and_input_extraction",
@@ -52,6 +54,7 @@ _WORKLOAD_FIELDS = {
     "unknowns",
     "array_digests",
     "material_family_digest",
+    "placement",
     "placement_digest",
 }
 _DIGEST_FIELDS = {"diffusion", "absorption", "scattering", "fission_transfer"}
@@ -238,7 +241,16 @@ def _check_workload(value: object) -> tuple[str, dict[str, Any]]:
     layers = _integer(workload["axial_layers"], "workload.axial_layers", positive=True)
     cells = _integer(workload["active_cells"], "workload.active_cells", positive=True)
     unknowns = _integer(workload["unknowns"], "workload.unknowns", positive=True)
-    expected_id = f"g{groups}-z{layers}"
+    placement = workload["placement"]
+    if not isinstance(placement, dict) or "kind" not in placement:
+        raise ValueError("workload.placement must be a placement record")
+    try:
+        checked_placement = placement_record(str(placement["kind"]))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("workload.placement is invalid") from exc
+    if placement != checked_placement:
+        raise ValueError("workload.placement is not exact provenance")
+    expected_id = workload_identifier(groups, layers, str(placement["kind"]))
     if workload["workload_id"] != expected_id:
         raise ValueError(f"workload.workload_id must be {expected_id!r}")
     if cells != 61 * layers or unknowns != cells * groups:
@@ -518,6 +530,7 @@ def _check_outcome(
         requested_threads=threads,
         kind=kind,
         repetition=repetition,
+        placement=str(workload["placement"]["kind"]),
     )
     if outcome_id != expected_id:
         raise ValueError("outcome has an invalid identifier")

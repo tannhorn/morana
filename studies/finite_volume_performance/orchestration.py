@@ -140,13 +140,14 @@ def _launch_worker(
     axial_layers: int,
     *,
     requested_threads: int,
-    kind: str = "measurement",
-    repetition: int | None = None,
-    timeout_seconds: int | float = DEFAULT_TIMEOUT_SECONDS,
-    address_space_limit_bytes: int = DEFAULT_ADDRESS_SPACE_LIMIT_BYTES,
+    kind: str,
+    repetition: int | None,
+    timeout_seconds: int | float,
+    address_space_limit_bytes: int,
     solver_case: str,
     iteration_id: str,
     shift_inverse_keff: float | None,
+    placement: str,
 ) -> dict[str, Any]:
     """Run one resource-bounded outcome in a new Python interpreter."""
     if kind not in {"measurement", "profile"}:
@@ -171,6 +172,8 @@ def _launch_worker(
         solver_case,
         "--iteration",
         iteration_id,
+        "--placement",
+        placement,
     ]
     if repetition is not None:
         command.extend(("--repetition", str(repetition)))
@@ -233,14 +236,20 @@ def outcome_identifier(
     requested_threads: int,
     kind: str,
     repetition: int | None,
+    placement: str,
 ) -> str:
     """Return one deterministic performance-outcome identifier."""
+    workload_id = workload_identifier(groups, axial_layers, placement)
     policy_id = iteration_identifier(iteration)
     suffix = "none" if repetition is None else str(repetition)
     return (
-        f"g{groups}-z{axial_layers}-{case_id}-{policy_id}-t{requested_threads}-"
-        f"{kind}-r{suffix}"
+        f"{workload_id}-{case_id}-{policy_id}-t{requested_threads}-" f"{kind}-r{suffix}"
     )
+
+
+def workload_identifier(groups: int, axial_layers: int, placement: str) -> str:
+    """Return one stable workload identifier including its placement."""
+    return f"g{groups}-z{axial_layers}-{placement}"
 
 
 def outcome_fields(
@@ -252,6 +261,7 @@ def outcome_fields(
     requested_threads: int,
     kind: str,
     repetition: int | None,
+    placement: str,
 ) -> dict[str, object]:
     """Return the shared identity fields for one terminal outcome."""
     return {
@@ -263,10 +273,11 @@ def outcome_fields(
             requested_threads=requested_threads,
             kind=kind,
             repetition=repetition,
+            placement=placement,
         ),
         "case_id": case_id,
         "eigenvalue_iteration": iteration,
-        "workload_id": f"g{groups}-z{axial_layers}",
+        "workload_id": workload_identifier(groups, axial_layers, placement),
         "kind": kind,
         "repetition": repetition,
         "requested_threads": requested_threads,
@@ -278,13 +289,14 @@ def launch_outcome(
     axial_layers: int,
     *,
     case_id: str,
-    iteration_id: str = "power",
-    shift_inverse_keff: float | None = None,
+    iteration_id: str,
+    shift_inverse_keff: float | None,
     requested_threads: int,
     kind: str,
     repetition: int | None,
-    timeout_seconds: int | float = DEFAULT_TIMEOUT_SECONDS,
-    address_space_limit_bytes: int = DEFAULT_ADDRESS_SPACE_LIMIT_BYTES,
+    timeout_seconds: int | float,
+    address_space_limit_bytes: int,
+    placement: str,
 ) -> dict[str, Any]:
     """Run one case and convert bounded worker failures into outcome records."""
     iteration = iteration_record(iteration_id, shift_inverse_keff)
@@ -297,26 +309,29 @@ def launch_outcome(
         return _launch_worker(
             groups,
             axial_layers,
-            requested_threads=requested_threads,
-            kind=kind,
-            repetition=repetition,
             timeout_seconds=checked_timeout,
             address_space_limit_bytes=checked_memory,
             solver_case=case_id,
             iteration_id=iteration_id,
             shift_inverse_keff=shift_inverse_keff,
+            placement=placement,
+            requested_threads=requested_threads,
+            repetition=repetition,
+            kind=kind,
         )
     except PerformanceWorkerError as exc:
+        identity = outcome_fields(
+            groups,
+            axial_layers,
+            case_id,
+            placement=placement,
+            repetition=repetition,
+            kind=kind,
+            iteration=iteration,
+            requested_threads=requested_threads,
+        )
         return {
-            **outcome_fields(
-                groups,
-                axial_layers,
-                case_id,
-                iteration=iteration,
-                requested_threads=requested_threads,
-                kind=kind,
-                repetition=repetition,
-            ),
+            **identity,
             "started_at_utc": started_at,
             "status": "failed",
             "repository": None,

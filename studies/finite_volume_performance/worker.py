@@ -17,6 +17,9 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--repetition", type=int)
     parser.add_argument("--solver-case", required=True)
     parser.add_argument("--iteration", required=True)
+    parser.add_argument(
+        "--placement", choices=("structured", "permuted"), required=True
+    )
     parser.add_argument("--shift-inverse-keff", type=float)
     parser.add_argument("--address-space-limit-bytes", type=int, required=True)
     parser.add_argument("--output-file-limit-bytes", type=int, required=True)
@@ -64,7 +67,7 @@ def main() -> None:
         measure = measure_bicgstab_jacobi
     else:
         raise ValueError(
-            "solver-case must be 'direct', 'gmres_jacobi', or " "'bicgstab_jacobi'"
+            "solver-case must be 'direct', 'gmres_jacobi', or 'bicgstab_jacobi'"
         )
     outcome = measure(
         arguments.groups,
@@ -74,6 +77,7 @@ def main() -> None:
         repetition=arguments.repetition,
         iteration_id=arguments.iteration,
         shift_inverse_keff=arguments.shift_inverse_keff,
+        placement=arguments.placement,
     )
     print(json.dumps(outcome, sort_keys=True, allow_nan=False))
 
