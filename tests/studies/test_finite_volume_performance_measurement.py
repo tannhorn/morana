@@ -414,24 +414,24 @@ def test_factor_views_are_inspected_after_peak_rss_is_frozen(monkeypatch) -> Non
 
 
 def test_study_modes_and_cases_are_exact() -> None:
-    """Smoke and the three single-thread baselines have fixed definitions."""
+    """Smoke and the three single-thread scaling sweeps have fixed definitions."""
     smoke = _plan("smoke")
     assert smoke.output_name == "smoke.json"
     assert [request.record for request in smoke.requests] == [False, True, True]
     assert {request.case_id for request in smoke.requests} == {DIRECT_CASE_ID}
-    direct = _plan("baseline")
-    gmres = _plan("baseline", GMRES_JACOBI_CASE_ID)
-    bicgstab = _plan("baseline", BICGSTAB_JACOBI_CASE_ID)
-    assert direct.output_name == "baseline_direct.json"
-    assert gmres.output_name == "baseline_gmres_jacobi.json"
-    assert bicgstab.output_name == "baseline_bicgstab_jacobi.json"
+    direct = _plan("scaling")
+    gmres = _plan("scaling", GMRES_JACOBI_CASE_ID)
+    bicgstab = _plan("scaling", BICGSTAB_JACOBI_CASE_ID)
+    assert direct.output_name == "scaling_direct.json"
+    assert gmres.output_name == "scaling_gmres_jacobi.json"
+    assert bicgstab.output_name == "scaling_bicgstab_jacobi.json"
     assert len(direct.requests) == 36
     assert len(gmres.requests) == len(bicgstab.requests) == 60
     assert {request.requested_threads for request in gmres.requests} == {1}
     expected_warmup = _request(6, 2, DIRECT_CASE_ID, record=False)
     assert direct.requests[::3] == (expected_warmup,) * 12
     with pytest.raises(ValueError, match="one of"):
-        _plan("baseline", "gmres_ilu")
+        _plan("scaling", "gmres_ilu")
 
 
 def test_selected_protocol_requires_explicit_measurement_scope() -> None:
@@ -634,13 +634,13 @@ def test_result_reader_requires_an_exact_operator_policy(
         _document([invalid])
 
 
-def test_baseline_resume_runs_only_missing_endpoint_after_cheap_warmup() -> None:
-    """A partial baseline resumes its endpoint after the uniform cheap warm-up."""
-    plan = _plan("baseline")
-    baseline = plan.requests
+def test_scaling_resume_runs_only_missing_endpoint_after_cheap_warmup() -> None:
+    """A partial scaling run resumes its endpoint after the uniform cheap warm-up."""
+    plan = _plan("scaling")
+    scaling = plan.requests
     completed = [
         {"outcome_id": runner._request_id(request), "status": "success"}
-        for request in baseline
+        for request in scaling
         if request.record and (request.groups, request.axial_layers) != (72, 24)
     ]
     pending = runner._pending_groups(plan.groups, completed)

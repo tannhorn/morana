@@ -83,7 +83,7 @@ class RunPlan:
 
 
 def _resolve_case_id(case_id: str | None) -> str:
-    """Resolve and validate the selected baseline case."""
+    """Resolve and validate the selected solver case."""
     resolved = DIRECT_CASE_ID if case_id is None else case_id
     if resolved not in CASE_IDS:
         raise ValueError(f"--solver must be one of {CASE_IDS}")
@@ -185,7 +185,7 @@ def _plan(
     )
     if mode == "smoke":
         if solver_case is not None:
-            raise ValueError("--solver applies only to baseline or selected mode")
+            raise ValueError("--solver applies only to scaling or selected mode")
         if any(explicit_options):
             raise ValueError("workload selection applies only to selected mode")
         return RunPlan(
@@ -203,18 +203,18 @@ def _plan(
                 requested_threads=DEFAULT_STUDY_PROTOCOL.requested_threads,
             ),
         )
-    if mode == "baseline":
+    if mode == "scaling":
         if any(explicit_options):
             raise ValueError("workload selection applies only to selected mode")
         case_id = _resolve_case_id(solver_case)
         # pylint: disable-next=import-outside-toplevel
-        from studies.finite_volume_performance.workload import baseline_workloads
+        from studies.finite_volume_performance.workload import scaling_workloads
 
         return RunPlan(
             mode,
-            f"baseline_{case_id}.json",
+            f"scaling_{case_id}.json",
             _execution_groups(
-                tuple(baseline_workloads()),
+                tuple(scaling_workloads()),
                 case_id,
                 DEFAULT_STUDY_PROTOCOL.warmup,
                 repetitions=DEFAULT_STUDY_PROTOCOL.repetitions(case_id),
@@ -254,7 +254,7 @@ def _plan(
                 requested_threads=DEFAULT_STUDY_PROTOCOL.requested_threads,
             ),
         )
-    raise ValueError("mode must be 'smoke', 'baseline', or 'selected'")
+    raise ValueError("mode must be 'smoke', 'scaling', or 'selected'")
 
 
 def _request_id(request: WorkerRequest) -> str:
@@ -444,7 +444,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "mode",
-        choices=("smoke", "baseline", "selected"),
+        choices=("smoke", "scaling", "selected"),
         nargs="?",
         default="smoke",
     )
@@ -464,7 +464,7 @@ def parse_args() -> argparse.Namespace:
         "--solver",
         dest="solver_case",
         metavar="CASE_ID",
-        help=("solver case for baseline or selected mode"),
+        help=("solver case for scaling or selected mode"),
     )
     parser.add_argument(
         "--workload",

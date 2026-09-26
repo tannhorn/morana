@@ -19,8 +19,8 @@ from morana.solvers.finite_volume import solve_keff
 
 
 def test_workload_matrix_has_expected_dimensions() -> None:
-    """The group-major Cartesian matrix retains all twelve baseline cases."""
-    assert workload.baseline_workloads() == (
+    """The group-major Cartesian matrix retains all twelve scaling cases."""
+    assert workload.scaling_workloads() == (
         (6, 6),
         (6, 12),
         (6, 24),

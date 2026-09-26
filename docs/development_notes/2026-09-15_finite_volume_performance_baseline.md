@@ -61,7 +61,7 @@ solver-policy surface.
 ## Retained study
 
 The repository retains the deterministic workload builder, checked result
-reader, and controlled one-thread smoke and baseline workflows under
+reader, and controlled one-thread smoke and scaling workflows under
 `studies/finite_volume_performance/`. Its
 [README](https://github.com/tannhorn/morana/blob/main/studies/finite_volume_performance/README.md)
 owns the current commands and artifact-location guidance. Raw,

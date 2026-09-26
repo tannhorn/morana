@@ -33,7 +33,7 @@ from morana import (
 )
 
 GROUP_COUNTS = (6, 18, 36, 72)
-BASELINE_AXIAL_LAYER_COUNTS = (6, 12, 24)
+SCALING_AXIAL_LAYER_COUNTS = (6, 12, 24)
 SMOKE_AXIAL_LAYER_COUNT = 2
 NUM_PLANAR_RINGS = 5
 LATTICE_PITCH_CM = 11.0 * 2.54
@@ -200,10 +200,10 @@ def _require_group_count(groups: int) -> int:
 
 
 def _require_axial_layers(axial_layers: int) -> int:
-    """Require one baseline or smoke axial-layer count."""
+    """Require one scaling-sweep or smoke axial-layer count."""
     if isinstance(axial_layers, bool) or not isinstance(axial_layers, int):
         raise TypeError("axial_layers must be an integer")
-    supported = (SMOKE_AXIAL_LAYER_COUNT, *BASELINE_AXIAL_LAYER_COUNTS)
+    supported = (SMOKE_AXIAL_LAYER_COUNT, *SCALING_AXIAL_LAYER_COUNTS)
     if axial_layers not in supported:
         raise ValueError(f"axial_layers must be one of {supported}")
     return axial_layers
@@ -536,12 +536,12 @@ def solve_settings() -> KeffSettings:
     )
 
 
-def baseline_workloads() -> tuple[tuple[int, int], ...]:
-    """Return the complete group-major Cartesian baseline matrix."""
+def scaling_workloads() -> tuple[tuple[int, int], ...]:
+    """Return the complete group-major Cartesian scaling matrix."""
     return tuple(
         (groups, axial_layers)
         for groups in GROUP_COUNTS
-        for axial_layers in BASELINE_AXIAL_LAYER_COUNTS
+        for axial_layers in SCALING_AXIAL_LAYER_COUNTS
     )
 
 

@@ -7,7 +7,7 @@ claim, a recognized reference problem, or a portable performance guarantee.
 
 Run the commands below from the repository root.
 
-## Smoke and baseline runs
+## Smoke and scaling runs
 
 The routine smoke workflow is:
 
@@ -15,18 +15,18 @@ The routine smoke workflow is:
 python -m studies.finite_volume_performance
 ```
 
-The long-running production-policy baselines are explicit:
+The structured Cartesian scaling sweeps are explicit:
 
 ```bash
-python -m studies.finite_volume_performance baseline
-python -m studies.finite_volume_performance baseline --solver gmres_jacobi
-python -m studies.finite_volume_performance baseline --solver bicgstab_jacobi
+python -m studies.finite_volume_performance scaling
+python -m studies.finite_volume_performance scaling --solver gmres_jacobi
+python -m studies.finite_volume_performance scaling --solver bicgstab_jacobi
 ```
 
-Every baseline workload uses the same unrecorded `(6 groups, 2 layers)`
+Every scaling workload uses the same unrecorded `(6 groups, 2 layers)`
 warm-up before its recorded workers. Each worker starts in a fresh process;
 numerical-library imports precede its measured solve interval.
-Smoke, baseline, and complete-matrix presets share one execution protocol:
+Smoke, scaling, and complete-matrix presets share one execution protocol:
 one numerical-library thread, a five-minute deadline, a 16 GiB address-space
 limit, the `(6, 2)` warm-up, and one profile per case. Direct cases record one
 timing observation; iterative cases record three.
@@ -49,7 +49,7 @@ Add `--placement permuted` to use the single maintained seed-0 inventory
 permutation. It preserves every material-role count while changing planar and
 axial adjacency. Its SHA-256 ordering algorithm, seed, and placement digest are
 recorded with the workload. The runner intentionally provides no arbitrary
-seed interface, and routine smoke and baseline runs remain structured.
+seed interface, and routine smoke and scaling runs remain structured.
 
 ```bash
 python -m studies.finite_volume_performance selected \
