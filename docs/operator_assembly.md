@@ -143,6 +143,13 @@ $$
 These expressions explain how the products relate; the public solve functions
 remain the supported path for producing a checked `Result`.
 
+The maintained
+[custom operator example](examples.md#custom-finite-volume-operator-solve)
+uses these products to build a node-block Jacobi preconditioner and run small
+external fixed-source and criticality calculations. It is an executable
+illustration of the mapping above, including unpacking the candidate vectors
+and checking both original equations.
+
 ## Validation and ownership
 
 Every assembler checks that the compact data match the selected

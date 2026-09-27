@@ -464,21 +464,9 @@ Run the maintained case from the repository root:
 python -m examples.fixed_source_mms
 ```
 
-To repeat the full refinement study with the maintained direct,
-Jacobi-GMRES, and Jacobi-BiCGSTAB linear policies, add
-`--compare-strategies`:
-
-```bash
-python -m examples.fixed_source_mms --compare-strategies
-```
-
-Each policy is checked independently against the manufactured flux and the
-same residual, balance, and refinement-error acceptance criteria. The ordinary
-run remains direct-only so that generating its verification figures stays
-compact. The option prints per-strategy/per-level error and residual rows and
-writes them to `strategy_comparison.csv`. For a one-level table that also
-reports informational timing and Krylov counts, run
-`examples/solver_comparison.py`.
+The study deliberately uses the direct reference solver at every level. This
+keeps the refinement evidence focused on finite-volume discretization error
+rather than iterative convergence controls.
 
 The checked-in convergence and flux figures are regenerated from the same
 executable study with:

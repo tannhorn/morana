@@ -166,25 +166,26 @@ convergence evidence are in the
 python -m examples.keff_mms
 ```
 
-### Finite-volume strategy comparison
+### Custom finite-volume operator solve
 
-[`solver_comparison.py`](https://github.com/tannhorn/morana/blob/main/examples/solver_comparison.py)
-runs the maintained strategy set once on refinement
-level 1 of the independently manufactured cases. The fixed-source set covers
-direct, Jacobi-GMRES, and Jacobi-BiCGSTAB solving. The criticality set applies
-those three linear policies to ordinary power iteration and also exercises
-fixed-Wielandt iteration with each inner policy. Its compact console table
-reports configuration setup and solve times,
-outer and total inner iterations, final residuals, and the relevant
-manufactured-reference errors. Timing is informative only: portability and
-correctness rely on the MMS residual and reference-error checks, not relative
-wall-clock performance. Run either MMS example with `--compare-strategies` to
-apply its full three-level acceptance criteria to that example's maintained
-set and write a `strategy_comparison.csv` evidence table beside its usual
-artifacts.
+[`custom_operator_solve.py`](https://github.com/tannhorn/morana/blob/main/examples/custom_operator_solve.py)
+shows the advanced public-operator boundary without using private Morana
+names. It assembles a small ragged two-group problem, constructs a custom
+dense node-block Jacobi preconditioner from the documented group-fastest
+packing, and uses SciPy GMRES for both an external fixed-source solve and the
+inner solves of an external power iteration. It unpacks both candidate vectors
+into group-major layer arrays and verifies the original fixed-source and
+criticality equations.
+
+The candidates and diagnostics remain owned by the example as NumPy values;
+they are not checked Morana `Result` objects. Use Morana's solve functions
+when result construction, execution provenance, physical normalization,
+balance checks, and the complete admissibility and convergence contract are
+required. The [operator-assembly guide](operator_assembly.md) defines the
+mapping, signs, prerequisites, and ownership rules used here.
 
 ```bash
-python -m examples.solver_comparison
+python -m examples.custom_operator_solve
 ```
 
 ## Import and compare external material data

@@ -1005,10 +1005,33 @@ def test_fixed_source_multiplicity_satisfies_assembled_operator_identity() -> No
         FissionTransfer([[0.0, 0.05], [0.0, 0.0]]),
     ),
 )
+@pytest.mark.parametrize(
+    "linear_solve",
+    (
+        DirectLinearSolveSettings(relative_residual_tolerance=1.0e-12),
+        GmresLinearSolveSettings(
+            relative_residual_tolerance=1.0e-12,
+            max_krylov_iterations=100,
+            restart=10,
+            preconditioner=JacobiPreconditioner(),
+        ),
+        BicgstabLinearSolveSettings(
+            relative_residual_tolerance=1.0e-12,
+            max_krylov_iterations=100,
+            preconditioner=JacobiPreconditioner(),
+        ),
+    ),
+    ids=("direct", "gmres-jacobi", "bicgstab-jacobi"),
+)
 def test_fixed_source_solves_subcritical_multiplying_response(
     neutron_production: SeparableFission | FissionTransfer,
+    linear_solve: (
+        DirectLinearSolveSettings
+        | GmresLinearSolveSettings
+        | BicgstabLinearSolveSettings
+    ),
 ) -> None:
-    """Equivalent fission forms must give the same fixed-source response."""
+    """Solver policies and fission forms give one multiplying response."""
     mesh = HexPlanarMesh(1, pitch=10.0)
     fuel = Material(
         "fuel",
@@ -1029,14 +1052,17 @@ def test_fixed_source_solves_subcritical_multiplying_response(
         source=UniformSource([1.0, 0.0]),
     )
 
-    result = solve_fixed_source(configuration)
+    result = solve_fixed_source(
+        configuration, FixedSourceSettings(linear_solve=linear_solve)
+    )
 
     np.testing.assert_allclose(result.flux_layer(0), [[10.0], [2.5]])
     group_balance = result.balance.by_group
     production = 0.05 * configuration.material_mesh.cell_volume(0) * 10.0
     np.testing.assert_allclose(group_balance["fission_production"], [production, 0.0])
     np.testing.assert_allclose(group_balance["fission_emission"], [0.0, production])
-    np.testing.assert_allclose(group_balance["residual"], [0.0, 0.0])
+    np.testing.assert_allclose(group_balance["residual"], [0.0, 0.0], atol=1.0e-12)
+    assert result.execution_report.true_relative_residual <= 1.0e-12
     assert result.balance["fission_production"] == pytest.approx(
         result.balance["fission_emission"]
     )

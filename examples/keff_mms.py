@@ -48,7 +48,6 @@ from examples._hex_z_mms import (  # pylint: disable=wrong-import-position
 )
 from morana.solvers.finite_volume import solve_keff
 from morana import (  # pylint: disable=wrong-import-position
-    BicgstabLinearSolveSettings,
     BoundaryCondition,
     BoundaryConditionSet,
     CrossSections,
@@ -56,7 +55,6 @@ from morana import (  # pylint: disable=wrong-import-position
     ExcludedRegion,
     FissionData,
     FissionSourceNormalization,
-    GmresLinearSolveSettings,
     HexPlanarMesh,
     Material,
     MaterialMesh,
@@ -64,8 +62,6 @@ from morana import (  # pylint: disable=wrong-import-position
     ProblemConfiguration,
     KeffSettings,
     SeparableFission,
-    JacobiPreconditioner,
-    WielandtShiftSettings,
 )
 
 TARGET_KEFF = 1.075
@@ -174,11 +170,6 @@ def parse_args() -> argparse.Namespace:
         "--documentation-assets-dir",
         type=Path,
         help="Optional directory for the tracked MMS documentation PNG assets.",
-    )
-    parser.add_argument(
-        "--compare-strategies",
-        action="store_true",
-        help="Also verify the maintained strategy set at every refinement level.",
     )
     return parser.parse_args()
 
@@ -367,79 +358,17 @@ def build_configuration(
     return configuration, exact_layers, len(values_by_face)
 
 
-def strategy_settings() -> tuple[tuple[str, KeffSettings], ...]:
-    """Return the compact supported k-effective strategy comparison set."""
-    tolerance = 1.0e-11
-    common = {
-        "max_outer_iterations": 500,
-        "keff_change_tolerance": tolerance,
-        "flux_change_tolerance": tolerance,
-        "keff_relative_residual_tolerance": tolerance,
-    }
-    direct = DirectLinearSolveSettings(relative_residual_tolerance=tolerance)
-    return (
-        ("direct-power", KeffSettings(inner_linear_solve=direct, **common)),
-        (
-            "gmres-jacobi-power",
-            KeffSettings(
-                inner_linear_solve=GmresLinearSolveSettings(
-                    relative_residual_tolerance=tolerance,
-                    preconditioner=JacobiPreconditioner(),
-                ),
-                **common,
-            ),
-        ),
-        (
-            "bicgstab-jacobi-power",
-            KeffSettings(
-                inner_linear_solve=BicgstabLinearSolveSettings(
-                    relative_residual_tolerance=tolerance,
-                    preconditioner=JacobiPreconditioner(),
-                ),
-                **common,
-            ),
-        ),
-        (
-            "direct-wielandt",
-            KeffSettings(
-                inner_linear_solve=direct,
-                eigenvalue_iteration=WielandtShiftSettings(0.9),
-                **common,
-            ),
-        ),
-        (
-            "gmres-jacobi-wielandt",
-            KeffSettings(
-                inner_linear_solve=GmresLinearSolveSettings(
-                    relative_residual_tolerance=tolerance,
-                    preconditioner=JacobiPreconditioner(),
-                ),
-                eigenvalue_iteration=WielandtShiftSettings(0.9),
-                **common,
-            ),
-        ),
-        (
-            "bicgstab-jacobi-wielandt",
-            KeffSettings(
-                inner_linear_solve=BicgstabLinearSolveSettings(
-                    relative_residual_tolerance=tolerance,
-                    preconditioner=JacobiPreconditioner(),
-                ),
-                eigenvalue_iteration=WielandtShiftSettings(0.9),
-                **common,
-            ),
-        ),
-    )
-
-
-def _solve_level(
-    level: int,
-    settings: KeffSettings | None = None,
-) -> tuple[RefinementResult, ProblemConfiguration, object]:
+def _solve_level(level: int) -> tuple[RefinementResult, ProblemConfiguration, object]:
     """Solve one level and compare it with independent eigenpair data."""
     configuration, exact_layers, boundary_faces = build_configuration(level)
-    if settings is None:
-        settings = strategy_settings()[0][1]
+    tolerance = 1.0e-11
+    settings = KeffSettings(
+        inner_linear_solve=DirectLinearSolveSettings(tolerance),
+        max_outer_iterations=500,
+        keff_change_tolerance=tolerance,
+        flux_change_tolerance=tolerance,
+        keff_relative_residual_tolerance=tolerance,
+    )
     result = solve_keff(
         configuration, FissionSourceNormalization(rate=FISSION_SOURCE_RATE), settings
     )
@@ -642,67 +571,6 @@ def _check_acceptance(rows: list[RefinementResult]) -> None:
             raise RuntimeError(f"MMS {label} error did not decrease under refinement")
 
 
-def compare_strategies(
-    levels: tuple[int, ...] = LEVELS,
-) -> dict[str, tuple[RefinementResult, ...]]:
-    """Verify each finite-volume strategy against the manufactured eigenpair.
-
-    The maintained default covers all refinement levels. One representative
-    level may be selected for compact execution-report demonstrations.
-    """
-    comparisons = {}
-    for name, settings in strategy_settings():
-        rows = tuple(_solve_level(level, settings)[0] for level in levels)
-        if levels == LEVELS:
-            _check_acceptance(list(rows))
-        elif any(
-            row.keff_relative_residual > 1.0e-10
-            or row.balance_relative_residual > 1.0e-10
-            for row in rows
-        ):
-            raise RuntimeError("MMS strategy did not meet residual acceptance")
-        comparisons[name] = rows
-    return comparisons
-
-
-def _write_strategy_comparison(
-    comparisons: dict[str, tuple[RefinementResult, ...]],
-    output_dir: Path,
-) -> None:
-    """Write k-effective MMS strategy evidence as a portable CSV table."""
-    lines = [
-        "strategy,level,relative_l2_error,keff_relative_error,"
-        "keff_relative_residual,"
-        "balance_relative_residual,outer_iterations"
-    ]
-    for strategy, rows in comparisons.items():
-        for row in rows:
-            lines.append(
-                f"{strategy},{row.level},{row.relative_l2_error:.16e},"
-                f"{row.keff_relative_error:.16e},"
-                f"{row.keff_relative_residual:.16e},"
-                f"{row.balance_relative_residual:.16e},{row.iterations}"
-            )
-    (output_dir / "strategy_comparison.csv").write_text(
-        "\n".join(lines) + "\n",
-        encoding="utf-8",
-    )
-
-
-def _print_strategy_comparison(
-    comparisons: dict[str, tuple[RefinementResult, ...]],
-) -> None:
-    """Print compact k-effective strategy evidence after successful checks."""
-    print("MMS strategy comparison")
-    print("strategy                    level  k-effective error  outer  residual")
-    for strategy, rows in comparisons.items():
-        for row in rows:
-            print(
-                f"{strategy:27}  {row.level:5d}  {row.keff_relative_error:16.8e}"
-                f"  {row.iterations:5d}  {row.keff_relative_residual:15.8e}"
-            )
-
-
 def main() -> None:
     """Run the refinement study, assert evidence, and write artifacts."""
     args = parse_args()
@@ -712,10 +580,6 @@ def main() -> None:
     rows = [entry[0] for entry in solved]
     finest_configuration, finest_result = solved[-1][1:]
     _check_acceptance(rows)
-    if args.compare_strategies:
-        comparisons = compare_strategies()
-        _write_strategy_comparison(comparisons, output_dir)
-        _print_strategy_comparison(comparisons)
     _write_convergence_csv(rows, output_dir)
     _plot_convergence(rows, output_dir / "convergence.png")
     _save_midplane_flux(

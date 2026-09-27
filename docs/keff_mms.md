@@ -314,24 +314,10 @@ Run the maintained case from the repository root:
 python -m examples.keff_mms
 ```
 
-To repeat the full refinement study with the maintained direct,
-Jacobi-GMRES, Jacobi-BiCGSTAB, and fixed-Wielandt strategy set, add
-`--compare-strategies`:
-
-```bash
-python -m examples.keff_mms --compare-strategies
-```
-
-Each policy is checked independently against the manufactured eigenpair and
-the same residual, balance, and refinement-error acceptance criteria. The
-ordinary run remains direct-power only so its verification figures stay
-compact. The option prints per-strategy/per-level eigenvalue-error,
-outer-iteration, and residual rows and writes them to
-`strategy_comparison.csv`. The comparison applies direct, Jacobi-GMRES, and
-Jacobi-BiCGSTAB inner solves to both ordinary and fixed-Wielandt iteration.
-For a one-level table that also reports
-informational setup/solve timing and outer/inner counts, run
-`examples/solver_comparison.py`.
+The study deliberately uses ordinary power iteration with the direct reference
+inner solver at every level. This keeps the manufactured-eigenpair refinement
+evidence focused on finite-volume discretization error rather than Krylov or
+shift controls.
 
 Regenerate the checked-in convergence and flux figures with:
 

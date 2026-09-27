@@ -51,17 +51,12 @@ from examples._hex_z_mms import (  # pylint: disable=wrong-import-position
 
 from morana.solvers.finite_volume import solve_fixed_source
 from morana import (  # pylint: disable=wrong-import-position
-    BicgstabLinearSolveSettings,
     BoundaryCondition,
     BoundaryConditionSet,
     CellSource,
     CrossSections,
-    DirectLinearSolveSettings,
     ExcludedRegion,
-    FixedSourceSettings,
-    GmresLinearSolveSettings,
     HexPlanarMesh,
-    JacobiPreconditioner,
     Material,
     MaterialMesh,
     MaterialSlice,
@@ -202,11 +197,6 @@ def parse_args() -> argparse.Namespace:
         "--documentation-assets-dir",
         type=Path,
         help="Optional directory for the tracked MMS documentation PNG assets.",
-    )
-    parser.add_argument(
-        "--compare-strategies",
-        action="store_true",
-        help="Also verify all supported linear strategies at every refinement level.",
     )
     return parser.parse_args()
 
@@ -416,44 +406,10 @@ def _exact_flux_layers(
     return tuple(layers)
 
 
-def strategy_settings() -> tuple[tuple[str, FixedSourceSettings], ...]:
-    """Return the compact supported fixed-source strategy comparison set."""
-    tolerance = 1.0e-11
-    return (
-        (
-            "direct",
-            FixedSourceSettings(
-                linear_solve=DirectLinearSolveSettings(tolerance),
-            ),
-        ),
-        (
-            "gmres-jacobi",
-            FixedSourceSettings(
-                linear_solve=GmresLinearSolveSettings(
-                    relative_residual_tolerance=tolerance,
-                    preconditioner=JacobiPreconditioner(),
-                ),
-            ),
-        ),
-        (
-            "bicgstab-jacobi",
-            FixedSourceSettings(
-                linear_solve=BicgstabLinearSolveSettings(
-                    relative_residual_tolerance=tolerance,
-                    preconditioner=JacobiPreconditioner(),
-                ),
-            ),
-        ),
-    )
-
-
-def _solve_level(
-    level: int,
-    settings: FixedSourceSettings | None = None,
-) -> tuple[RefinementResult, ProblemConfiguration, object]:
+def _solve_level(level: int) -> tuple[RefinementResult, ProblemConfiguration, object]:
     """Solve one level and compare it with independent exact cell averages."""
     configuration, exact_layers, boundary_faces = build_configuration(level)
-    result = solve_fixed_source(configuration, settings)
+    result = solve_fixed_source(configuration)
     maximum = 0.0
     for axial_index, exact in enumerate(exact_layers):
         difference = result.flux_layer(axial_index) - exact
@@ -648,64 +604,6 @@ def _check_acceptance(rows: list[RefinementResult]) -> None:
         )
 
 
-def compare_strategies(
-    levels: tuple[int, ...] = LEVELS,
-) -> dict[str, tuple[RefinementResult, ...]]:
-    """Verify every fixed-source execution strategy against the MMS reference.
-
-    The default covers the full maintained refinement study. Callers that only
-    need a compact comparison may select one representative level.
-    """
-    comparisons = {}
-    for name, settings in strategy_settings():
-        rows = tuple(_solve_level(level, settings)[0] for level in levels)
-        if levels == LEVELS:
-            _check_acceptance(list(rows))
-        elif any(
-            row.linear_residual > 1.0e-11 or row.balance_relative_residual > 1.0e-11
-            for row in rows
-        ):
-            raise RuntimeError("MMS strategy did not meet residual acceptance")
-        comparisons[name] = rows
-    return comparisons
-
-
-def _write_strategy_comparison(
-    comparisons: dict[str, tuple[RefinementResult, ...]],
-    output_dir: Path,
-) -> None:
-    """Write fixed-source MMS strategy evidence as a portable CSV table."""
-    lines = [
-        "strategy,level,relative_l2_error,max_relative_error,linear_residual,"
-        "balance_relative_residual"
-    ]
-    for strategy, rows in comparisons.items():
-        for row in rows:
-            lines.append(
-                f"{strategy},{row.level},{row.relative_l2_error:.16e},"
-                f"{row.max_relative_error:.16e},{row.linear_residual:.16e},"
-                f"{row.balance_relative_residual:.16e}"
-            )
-    (output_dir / "strategy_comparison.csv").write_text(
-        "\n".join(lines) + "\n",
-        encoding="utf-8",
-    )
-
-
-def _print_strategy_comparison(
-    comparisons: dict[str, tuple[RefinementResult, ...]],
-) -> None:
-    """Print compact fixed-source strategy evidence after successful checks."""
-    print("MMS strategy comparison")
-    print("strategy             level  relative L2 error  linear residual")
-    for strategy, rows in comparisons.items():
-        for row in rows:
-            print(
-                f"{strategy:20}  {row.level:5d}  {row.relative_l2_error:17.8e}"
-                f"  {row.linear_residual:15.8e}"
-            )
-
-
 def _observed_order(coarser: RefinementResult, finer: RefinementResult) -> float:
     """Return the relative-E2 order using the actual planar pitch ratio."""
     return _pitch_order(
@@ -748,10 +646,6 @@ def main() -> None:
     rows = [entry[0] for entry in solved]
     finest_configuration, finest_result = solved[-1][1:]
     _check_acceptance(rows)
-    if args.compare_strategies:
-        comparisons = compare_strategies()
-        _write_strategy_comparison(comparisons, output_dir)
-        _print_strategy_comparison(comparisons)
     _write_convergence_csv(rows, output_dir)
     _plot_convergence(rows, output_dir / "convergence.png")
     _save_material_layout(

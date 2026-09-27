@@ -1100,8 +1100,8 @@ units $\mathrm{n\,s^{-1}}$.
 
 ## References
 
-<a id="barrett-et-al-1994"></a>
-**Barrett et al. (1994).** R. Barrett, M. Berry, T. F. Chan, J. Demmel,
+**Barrett et al. (1994).**{#barrett-et-al-1994} R. Barrett, M. Berry,
+T. F. Chan, J. Demmel,
 J. Donato, J. Dongarra, V. Eijkhout, R. Pozo, C. Romine, and H. van der Vorst,
 *Templates for the Solution of Linear Systems: Building Blocks for Iterative
 Methods*, 2nd edition, SIAM, 1994. Open online sections:
@@ -1110,42 +1110,42 @@ Methods*, 2nd edition, SIAM, 1994. Open online sections:
 [3.2, “Jacobi Preconditioning”](https://www.netlib.org/linalg/html_templates/node55.html);
 and [3.4, “Incomplete Factorization Preconditioners”](https://www.netlib.org/linalg/html_templates/node59.html).
 
-<a id="bell-and-glasstone-1970"></a>
-**Bell and Glasstone (1970).** G. I. Bell and S. Glasstone, *Nuclear Reactor
+**Bell and Glasstone (1970).**{#bell-and-glasstone-1970} G. I. Bell and
+S. Glasstone, *Nuclear Reactor
 Theory*, TID-25606, U.S. Atomic Energy Commission, 1970.
 [OSTI bibliographic record](https://www.osti.gov/biblio/4074688) and
 [open full text](https://www.osti.gov/servlets/purl/4074688).
 
-<a id="boyd-et-al-2019"></a>
-**Boyd et al. (2019).** W. Boyd, A. Nelson, P. K. Romano, S. Shaner,
+**Boyd et al. (2019).**{#boyd-et-al-2019} W. Boyd, A. Nelson, P. K. Romano,
+S. Shaner,
 B. Forget, and K. Smith, “Multigroup Cross-Section Generation with the OpenMC
 Monte Carlo Particle Transport Code,” *Nuclear Technology*, 205(7), 928–944,
 2019, DOI
 [10.1080/00295450.2019.1571828](https://doi.org/10.1080/00295450.2019.1571828).
 [Open full text](https://www.osti.gov/servlets/purl/1559869).
 
-<a id="eymard-gallouet-herbin-2000"></a>
-**Eymard, Gallouët, and Herbin (2000).** R. Eymard, T. Gallouët, and
+**Eymard, Gallouët, and Herbin (2000).**{#eymard-gallouet-herbin-2000}
+R. Eymard, T. Gallouët, and
 R. Herbin, “Finite Volume Methods,” in *Handbook of Numerical Analysis*,
 volume 7, pp. 713–1020, 2000, DOI
 [10.1016/S1570-8659(00)07005-8](https://doi.org/10.1016/S1570-8659(00)07005-8).
 [Open author manuscript](https://raphaeleh.github.io/PUBLI/bookevol.pdf) and
 [HAL record](https://hal.science/hal-02100732v2).
 
-<a id="gu-2000"></a>
-**Gu (2000).** M. Gu, “Power Method” (Section 4.3.1), in Z. Bai, J. Demmel,
+**Gu (2000).**{#gu-2000} M. Gu, “Power Method” (Section 4.3.1), in Z. Bai,
+J. Demmel,
 J. Dongarra, A. Ruhe, and H. van der Vorst, editors, *Templates for the
 Solution of Algebraic Eigenvalue Problems: A Practical Guide*, SIAM,
 Philadelphia, 2000. [Open online section](https://netlib.org/utk/people/JackDongarra/etemplates/node95.html).
 
-<a id="larsen-et-al-2019"></a>
-**Larsen et al. (2019).** E. W. Larsen, B. S. Collins, B. A. Kochunas, and
+**Larsen et al. (2019).**{#larsen-et-al-2019} E. W. Larsen, B. S. Collins,
+B. A. Kochunas, and
 S. R. Stimpson, editors, *MPACT Theory Manual*, version 4.1,
 CASL-U-2019-1874-001, Consortium for Advanced Simulation of LWRs, 2019.
 [Open full text, Section 7.7 “CMFD Eigenvalue Solvers”](https://vera.ornl.gov/wp-content/uploads/2020/07/CASL-U-2019-1874-001_MPACT-Theory-Manual.pdf).
 
-<a id="vanyi-et-al-2021"></a>
-**Ványi et al. (2021).** A. S. Ványi, M. Hursin, and S. Czifrus,
+**Ványi et al. (2021).**{#vanyi-et-al-2021} A. S. Ványi, M. Hursin, and
+S. Czifrus,
 “Investigation of Recently Introduced Diffusion Coefficient Generation
 Methods,” in *Proceedings of the 30th International Conference Nuclear Energy
 for New Europe*, Bled, Slovenia, September 6–9, 2021, paper 311.
