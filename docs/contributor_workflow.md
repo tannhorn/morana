@@ -56,6 +56,20 @@ schema:
 cffconvert --validate -i CITATION.cff
 ```
 
+After changing a package version, release DOI, dated changelog heading, or
+current-release URL, check that the explicit release metadata and user-facing
+references agree:
+
+```bash
+python scripts/check_release_consistency.py
+```
+
+The checker treats `pyproject.toml` as the source of the current package
+version and canonical release URLs. It compares them with `CITATION.cff`, the
+newest dated changelog entry, and the current-release references in the README
+and installation, home, and citation pages. Historical references to older
+releases remain valid.
+
 After adding or editing a release-note fragment or changing its allocation
 counter, validate the fragment collection:
 
@@ -73,25 +87,13 @@ python scripts/check_reference_exports.py
 python scripts/check_spelling_and_terms.py
 ```
 
-The link check scans the generated HTML, verifies every local `href` target,
-and requires each URL fragment to match an ID in its target page. It also scans
-tracked Markdown outside the configured documentation source directory. Links
-below the published `site_url` map back to the generated site, while GitHub
-`blob/main` and `tree/main` links below the configured `repo_url` map back to
-the checkout. These project cross-links are checked locally without network
-requests; other external links are ignored. The check therefore catches stale
-heading anchors and project cross-links that the strict MkDocs build does not
-reject.
-The reference-export check compares the runtime `__all__` declarations of
-`morana`, `morana.solvers.finite_volume`, and `morana.operators` with exact
-mkdocstrings IDs in their generated reference pages, rejecting missing runtime
-attributes, missing anchors, and duplicate anchors.
-The spelling and terminology check scans authored documentation, public source
-and docstrings, maintained examples and studies, release-note fragments, and
-maintenance scripts. Add legitimate technical words to
-`scripts/spelling_vocabulary.txt`; keep discouraged forms and their canonical
-replacements in
-`scripts/terminology_rules.toml`.
+These checks run locally without testing unrelated external sites. The link
+check covers generated local links and project links back to the checkout; the
+reference check compares public `__all__` declarations with their generated
+mkdocstrings entries. The spelling check covers authored prose throughout the
+repository. Add legitimate technical words to
+`scripts/spelling_vocabulary.txt`, and keep canonical terminology replacements
+in `scripts/terminology_rules.toml`.
 
 After a substantial change, also run every maintained artifact in scope. The
 routine example suite is:
@@ -119,17 +121,13 @@ document their own reproduction commands and are run separately when in scope.
 
 ## Continuous integration
 
-Verification is local-first. Run the commands on this page before integration
-or release work. Make new changes on the long-lived `devel` branch; keep
-`main` for integrated, release-ready work. Pushes to `main` and pull requests
-into `main` run tests on Python 3.12, 3.13, and 3.14, plus static, licensing,
-spelling, terminology, documentation, internal-link, and reference-export
-checks. Run the local checks during ordinary `devel` work, or dispatch a
-workflow manually when clean-environment verification is useful before a pull
-request. Once a pull request is open, each update to it runs the hosted checks.
-Only pushes to `main` deploy documentation. The protected `main` branch
-requires every hosted check on an up-to-date pull request and allows
-squash-merging only.
+Make changes on the long-lived `devel` branch; keep `main` for integrated,
+release-ready work. Run the applicable local checks before integration or
+release work. Pull requests into `main` and pushes to `main` run the hosted
+test, static, licensing, and documentation checks; workflows can also be
+dispatched manually for clean-environment verification. Only pushes to `main`
+deploy documentation. The protected branch requires every hosted check on an
+up-to-date pull request and allows squash-merging only.
 
 Because a squash merge gives the integrated change a new commit identity,
 synchronize the long-lived `devel` branch immediately after each pull request
@@ -212,13 +210,19 @@ The checker validates filenames, allocation state, metadata types, referenced
 paths, and nonempty bodies. The ordinary test suite and CI also exercise this
 check.
 
-## Publishing package distributions
+## PyPI publication automation
 
-Package-index publication is separate from the GitHub and Zenodo source-release
-procedure. The dedicated `.github/workflows/publish.yml` workflow never runs
-for a branch push. It checks out an annotated `v<VERSION>` tag, confirms the
-project metadata, builds exactly one source distribution and one pure-Python
-wheel, validates their contents, and transfers those checked files to a
+Publishing a GitHub release (the `release: published` event) triggers `.github/workflows/publish.yml`.
+The workflow removes the leading `v` from the release tag, checks out that tag,
+verifies that it is annotated and points to the checked-out commit, then runs:
+
+```bash
+python scripts/check_release_consistency.py --expected-version "<VERSION>"
+```
+
+The command checks the version derived from `v<VERSION>` against the metadata
+committed in that tag. The workflow then builds and validates exactly one
+source distribution and one pure-Python wheel before passing those files to a
 separate publishing job.
 
 Configure the PyPI Trusted Publisher for the repository, `publish.yml`, and the
@@ -226,18 +230,10 @@ Configure the PyPI Trusted Publisher for the repository, `publish.yml`, and the
 Only the publishing job receives permission to request short-lived OIDC
 credentials; do not store a package-index API token in GitHub.
 
-Publish the GitHub release only after its annotated tag, source metadata,
-release evidence, and distribution checks are complete. The `release:
-published` event selects the protected production path. After publication,
-perform a clean, no-cache installation from PyPI and run the installed
-metadata, quickstart, and result-archive smoke paths. Package files and versions
-are immutable: do not rerun a successful upload or move its tag.
+## Publishing a release
 
-## Publishing a source release
-
-Only the following explicit procedure turns an exact `main` commit into a
-Morana release through GitHub and Zenodo. It is separate from ordinary `main`
-integration.
+The following procedure turns an exact `main` commit into a Morana release
+through GitHub, Zenodo, and PyPI.
 
 Before opening that release pull request, inspect the Git range since the
 previous tag and reconcile it with every pending fragment. Account for notable
@@ -250,9 +246,11 @@ release change, leave `changes/next_id.txt` at its current value, and run
 
 Prepare a release on `devel`, then use a pull request from `devel` into `main`
 to integrate the package version, dated changelog, citation metadata,
-installation guidance, and public URLs. The Zenodo version DOI must already be
-present in the source. After the pull request is squash-merged, update local
-`main` without creating another commit and record the exact release commit:
+installation guidance, and public URLs. Reserve the version DOI in the
+prepared Zenodo draft so it is already present in the source. Run
+`python scripts/check_release_consistency.py` as part of that preparation.
+After the pull request is squash-merged, update local `main` without creating
+another commit and record the exact release commit:
 
 ```bash
 git switch main
@@ -325,8 +323,7 @@ python -m venv "$release_test_dir/venv"
 ```
 
 Create a signed tag if signing is configured; otherwise create an annotated
-tag. The tag must point to `release_commit` and must never be moved after
-publication:
+tag. The tag must point to `release_commit`:
 
 ```bash
 release_version="<VERSION>"
@@ -338,22 +335,24 @@ git show --no-patch --decorate "v${release_version}"
 
 During one coordinated release window:
 
-1. Push the verified commit and `v<VERSION>` tag.
+1. Push the annotated `v<VERSION>` tag for the verified commit.
 2. Upload `morana-<VERSION>.tar.gz` and its SHA-256 file to the prepared Zenodo
    draft, then publish it and verify the version DOI.
-3. Create the GitHub release from the same tag, attach the identical two files,
-   link the Zenodo record and documentation, and use the dated changelog as the
-   release-note basis.
+3. Create and publish the GitHub release from the same tag, attach the identical
+   two files, link the Zenodo record and documentation, and use the dated
+   changelog as the release-note basis. Publication triggers the PyPI workflow
+   described above.
 4. Approve the protected PyPI publishing job, verify its distribution files,
-   and clean-install the exact version from PyPI.
+   then perform a clean, no-cache installation of the exact version and run
+   the installed metadata, quickstart, and result-archive smoke paths.
 5. Verify the deployed documentation and clean-install again from the
    published GitHub release archive.
 6. Record Zenodo's concept DOI for project-level citation links while retaining
    the version DOI for citations of the specific release.
 
 Do not use automatic GitHub-release ingestion: the archived source must already
-contain its version DOI. Do not publish either channel after a failed gate,
-rebuild the archive between channels, replace an accepted archive, reuse the
+contain its version DOI. Stop publication after any failed gate. Do not rebuild
+the archive between publication steps, replace an accepted archive, reuse the
 version, or move the public tag.
 
 ## Licensing files and dependencies
