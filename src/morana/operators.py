@@ -424,11 +424,9 @@ class _FiniteVolumeLayout:
                     f"layer {axial_index} must have shape {expected_shape}, "
                     f"got {values.shape}"
                 )
-            for active_id in range(expected_shape[1]):
-                for group in range(self.groups):
-                    packed[self.index(axial_index, active_id, group)] = values[
-                        group, active_id
-                    ]
+            start = self.node_offsets[axial_index] * self.groups
+            stop = start + expected_shape[1] * self.groups
+            packed[start:stop] = values.T.reshape(-1)
         return packed
 
     def unpack(self, packed: np.ndarray) -> tuple[np.ndarray, ...]:
@@ -437,13 +435,10 @@ class _FiniteVolumeLayout:
             raise ValueError(f"packed vector must have shape ({self.size},)")
         layers = []
         for axial_index, active_cells in enumerate(self.active_cells_by_layer):
-            values = np.empty((self.groups, active_cells), dtype=float)
-            for active_id in range(active_cells):
-                for group in range(self.groups):
-                    values[group, active_id] = packed[
-                        self.index(axial_index, active_id, group)
-                    ]
-            layers.append(values)
+            start = self.node_offsets[axial_index] * self.groups
+            stop = start + active_cells * self.groups
+            values = packed[start:stop].reshape(active_cells, self.groups).T
+            layers.append(np.array(values, dtype=float, copy=True))
         return tuple(layers)
 
 
@@ -699,21 +694,23 @@ def _assemble_fission_matrix(
 ) -> csr_matrix:
     """Assemble fission emission using an already-checked DOF layout."""
     material_mesh = configuration.material_mesh
-    entries: list[tuple[int, int, float]] = []
+    blocks: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
     with np.errstate(over="ignore", invalid="ignore"):
         for layer in cross_sections.layers:
             volume = material_mesh.cell_volume(layer.axial_index)
-            for active_id in range(layer.active_cells):
-                for group_to in range(layout.groups):
-                    for group_from in range(layout.groups):
-                        _append_matrix_entry(
-                            entries,
-                            layout.index(layer.axial_index, active_id, group_to),
-                            layout.index(layer.axial_index, active_id, group_from),
-                            layer.fission_transfer[group_from, group_to, active_id]
-                            * volume,
-                        )
-    matrix = _entries_matrix(entries, layout.size)
+            values = layer.fission_transfer.transpose(2, 1, 0) * volume
+            active_ids, groups_to, groups_from = np.nonzero(values)
+            node_indices = (
+                layout.node_offsets[layer.axial_index] + active_ids
+            ) * layout.groups
+            blocks.append(
+                (
+                    node_indices + groups_to,
+                    node_indices + groups_from,
+                    values[active_ids, groups_to, groups_from],
+                )
+            )
+    matrix = _batched_entries_coo_matrix(blocks, layout.size).tocsr()
     require_finite_nonnegative_array("global fission matrix entries", matrix.data)
     production_functional = _fission_production_functional(
         configuration, cross_sections, layout
@@ -742,12 +739,9 @@ def _fission_production_functional(
     with np.errstate(over="ignore", invalid="ignore"):
         for layer in cross_sections.layers:
             volume = material_mesh.cell_volume(layer.axial_index)
-            production = layer.fission_production
-            for active_id in range(layer.active_cells):
-                for group in range(layout.groups):
-                    functional[layout.index(layer.axial_index, active_id, group)] = (
-                        production[group, active_id] * volume
-                    )
+            start = layout.node_offsets[layer.axial_index] * layout.groups
+            stop = start + layer.active_cells * layout.groups
+            functional[start:stop] = (layer.fission_production.T * volume).ravel()
     require_finite_nonnegative_array("fission production values", functional)
     return functional
 
@@ -780,10 +774,12 @@ def _assemble_fission_power_functional(
                 kappa_sigma_f = None if fission is None else fission.kappa_sigma_f
                 if kappa_sigma_f is None:
                     continue
-                for group in range(layout.groups):
-                    functional[layout.index(layer.axial_index, active_id, group)] = (
-                        kappa_sigma_f[group] * _JOULES_PER_ELECTRON_VOLT * volume
-                    )
+                start = (
+                    layout.node_offsets[layer.axial_index] + active_id
+                ) * layout.groups
+                functional[start : start + layout.groups] = (
+                    kappa_sigma_f * _JOULES_PER_ELECTRON_VOLT * volume
+                )
     require_finite_nonnegative_array("fission power values", functional)
     return functional
 
@@ -902,54 +898,54 @@ def _assemble_loss_matrix(context: _FiniteVolumeAssemblyContext) -> csr_matrix:
     layout = context.layout
     cross_sections = context.cross_sections
     material_mesh = context.material_mesh
-    entries: list[tuple[int, int, float]] = []
+    blocks: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
     for layer in cross_sections.layers:
         axial_index = layer.axial_index
         cell_volume = material_mesh.cell_volume(axial_index)
-        sigma_r = layer.sigma_r
-        scattering_coupling = layer.scattering_coupling
-        for group in range(layout.groups):
-            for active_id in range(layer.active_cells):
-                row = layout.index(axial_index, active_id, group)
-                _append_matrix_entry(
-                    entries, row, row, sigma_r[group, active_id] * cell_volume
-                )
-            for active_id in range(layer.active_cells):
-                for group_to in range(layout.groups):
-                    _append_matrix_entry(
-                        entries,
-                        layout.index(axial_index, active_id, group_to),
-                        layout.index(axial_index, active_id, group),
-                        -scattering_coupling[group, group_to, active_id] * cell_volume,
-                    )
+        node_offset = layout.node_offsets[axial_index]
+        removal = layer.sigma_r.T * cell_volume
+        active_ids, groups = np.nonzero(removal)
+        diagonal = (node_offset + active_ids) * layout.groups + groups
+        blocks.append((diagonal, diagonal, removal[active_ids, groups]))
+
+        scattering = -layer.scattering_coupling.transpose(2, 1, 0) * cell_volume
+        active_ids, groups_to, groups_from = np.nonzero(scattering)
+        node_indices = (node_offset + active_ids) * layout.groups
+        blocks.append(
+            (
+                node_indices + groups_to,
+                node_indices + groups_from,
+                scattering[active_ids, groups_to, groups_from],
+            )
+        )
     for interface in context.internal_interfaces:
-        for group in range(layout.groups):
-            conductance = _internal_interface_conductance(
-                context, interface, group=group
+        conductance = _internal_interface_conductances(context, interface)
+        groups = np.flatnonzero(conductance)
+        primary = (
+            layout.node_offsets[interface.primary_axial_index]
+            + interface.primary_active_id
+        ) * layout.groups + groups
+        secondary = (
+            layout.node_offsets[interface.secondary_axial_index]
+            + interface.secondary_active_id
+        ) * layout.groups + groups
+        values = conductance[groups]
+        blocks.append(
+            (
+                np.concatenate((primary, primary, secondary, secondary)),
+                np.concatenate((primary, secondary, secondary, primary)),
+                np.concatenate((values, -values, values, -values)),
             )
-            primary = layout.index(
-                interface.primary_axial_index, interface.primary_active_id, group
-            )
-            secondary = layout.index(
-                interface.secondary_axial_index,
-                interface.secondary_active_id,
-                group,
-            )
-            _append_matrix_entry(entries, primary, primary, conductance)
-            _append_matrix_entry(entries, primary, secondary, -conductance)
-            _append_matrix_entry(entries, secondary, secondary, conductance)
-            _append_matrix_entry(entries, secondary, primary, -conductance)
+        )
     for face in context.exposed_faces:
         layer = cross_sections.layer(face.topology.axial_index)
-        for group in range(layout.groups):
-            conductance = _exposed_face_conductance(face, layer, group)
-            _append_matrix_entry(
-                entries,
-                layout.index(face.topology.axial_index, face.topology.active_id, group),
-                layout.index(face.topology.axial_index, face.topology.active_id, group),
-                conductance,
-            )
-    return _loss_entries_matrix(entries, layout.size)
+        conductance = _exposed_face_conductances(face, layer)
+        groups = np.flatnonzero(conductance)
+        diagonal = (
+            layout.node_offsets[face.topology.axial_index] + face.topology.active_id
+        ) * layout.groups + groups
+        blocks.append((diagonal, diagonal, conductance[groups]))
+    return _loss_entries_matrix(blocks, layout.size)
 
 
 # pylint: enable=too-many-nested-blocks
@@ -1270,38 +1266,28 @@ def _append_internal_interface(
     )
 
 
-def _append_matrix_entry(
-    entries: list[tuple[int, int, float]],
-    row: int,
-    column: int,
-    value: float,
-) -> None:
-    """Append one sparse matrix contribution."""
-    if value != 0.0:
-        entries.append((row, column, value))
-
-
-def _entries_matrix(entries: list[tuple[int, int, float]], size: int) -> csr_matrix:
-    """Return a square sparse matrix from accumulated contributions."""
-    return _entries_coo_matrix(entries, size).tocsr()
-
-
 def _loss_entries_matrix(
-    entries: list[tuple[int, int, float]], size: int
+    blocks: list[tuple[np.ndarray, np.ndarray, np.ndarray]],
+    size: int,
 ) -> csr_matrix:
     """Check accumulated loss entries, then return their CSR representation."""
-    matrix = _entries_coo_matrix(entries, size)
+    matrix = _batched_entries_coo_matrix(blocks, size)
     with np.errstate(over="ignore", invalid="ignore"):
         matrix.sum_duplicates()
     _check_global_loss_matrix(matrix)
     return matrix.tocsr()
 
 
-def _entries_coo_matrix(entries: list[tuple[int, int, float]], size: int) -> coo_matrix:
-    """Return a square COO matrix from accumulated contributions."""
-    if not entries:
+def _batched_entries_coo_matrix(
+    blocks: list[tuple[np.ndarray, np.ndarray, np.ndarray]],
+    size: int,
+) -> coo_matrix:
+    """Combine array triplets into one sparse matrix."""
+    if not blocks:
         return coo_matrix((size, size), dtype=float)
-    rows, columns, values = zip(*entries)
+    rows = np.concatenate([block[0] for block in blocks])
+    columns = np.concatenate([block[1] for block in blocks])
+    values = np.concatenate([block[2] for block in blocks])
     return coo_matrix((values, (rows, columns)), shape=(size, size))
 
 
@@ -1377,6 +1363,55 @@ def _axial_conductance(
         * face_area
         / (lower_half_height + upper_half_height)
     )
+
+
+def _internal_interface_conductances(
+    context: _FiniteVolumeAssemblyContext,
+    interface: _InternalInterface,
+) -> np.ndarray:
+    """Return one internal interface's conductances for all groups."""
+    primary = context.cross_sections.layer(interface.primary_axial_index)
+    secondary = context.cross_sections.layer(interface.secondary_axial_index)
+    left = primary.diffusion[:, interface.primary_active_id]
+    right = secondary.diffusion[:, interface.secondary_active_id]
+    if interface.radial:
+        left_distance = interface.center_to_face
+        right_distance = interface.center_to_face
+        center_distance = 2.0 * interface.center_to_face
+    else:
+        left_distance = (
+            context.material_mesh.layer_height(interface.primary_axial_index) / 2.0
+        )
+        right_distance = (
+            context.material_mesh.layer_height(interface.secondary_axial_index) / 2.0
+        )
+        center_distance = left_distance + right_distance
+    conductance = np.zeros(context.layout.groups, dtype=float)
+    nonzero = (left != 0.0) & (right != 0.0)
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        conductance[nonzero] = (
+            (left_distance + right_distance)
+            / (left_distance / left[nonzero] + right_distance / right[nonzero])
+            * interface.face_area
+            / center_distance
+        )
+    return conductance
+
+
+def _exposed_face_conductances(
+    face: _ExposedFace,
+    layer: CrossSectionLayerData,
+) -> np.ndarray:
+    """Return one exposed face's loss conductances for all groups."""
+    diffusion = layer.diffusion[:, face.topology.active_id]
+    boundary = face.boundary
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        if boundary.kind == "dirichlet":
+            return diffusion * face.face_area / face.center_to_face
+        if boundary.alpha == 0.0:
+            return np.zeros_like(diffusion)
+        denominator = diffusion + boundary.alpha * face.center_to_face
+        return face.face_area * boundary.alpha * diffusion / denominator
 
 
 def _internal_interface_conductance(

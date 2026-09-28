@@ -4,7 +4,6 @@ from pathlib import Path
 
 from scripts.check_release_consistency import check_release_consistency
 
-
 VERSION = "1.2.3"
 DOI = "10.5281/zenodo.1234567"
 DATE = "2026-09-27"
@@ -16,13 +15,13 @@ DOI_URL = f"https://doi.org/{DOI}"
 def _repository(tmp_path: Path) -> Path:
     """Create a minimal repository with internally consistent release data."""
     (tmp_path / "pyproject.toml").write_text(
-        f'''[project]
+        f"""[project]
 version = "{VERSION}"
 
 [project.urls]
 Release = "{RELEASE_URL}"
 DOI = "{DOI_URL}"
-''',
+""",
         encoding="utf-8",
     )
     (tmp_path / "CITATION.cff").write_text(
@@ -78,8 +77,7 @@ def test_release_consistency_reports_metadata_disagreement(tmp_path: Path) -> No
         encoding="utf-8",
     )
     (root / "CITATION.cff").write_text(
-        "version: 1.2.2\ndate-released: 2026-09-26\n"
-        "doi: 10.5281/zenodo.7654321\n",
+        "version: 1.2.2\ndate-released: 2026-09-26\n" "doi: 10.5281/zenodo.7654321\n",
         encoding="utf-8",
     )
     changelog = root / "docs/changelog.md"
@@ -112,9 +110,7 @@ def test_release_consistency_reports_stale_current_documentation(
     _, failures = check_release_consistency(root)
 
     index_reasons = [
-        failure.reason
-        for failure in failures
-        if failure.path == root / "docs/index.md"
+        failure.reason for failure in failures if failure.path == root / "docs/index.md"
     ]
     assert len(index_reasons) == 3
     assert all("missing current-release text" in reason for reason in index_reasons)

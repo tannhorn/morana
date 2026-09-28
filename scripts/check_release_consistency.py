@@ -8,7 +8,6 @@ from pathlib import Path
 import re
 import tomllib
 
-
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 CHANGELOG_HEADING = re.compile(
     r"^## (?P<version>\S+) - (?P<date>\d{4}-\d{2}-\d{2})$",
@@ -151,25 +150,29 @@ def check_release_consistency(
 
     pypi_url = f"https://pypi.org/project/morana/{version}/"
     current_release_text = {
-        repository_root / "README.md": (
+        repository_root
+        / "README.md": (
             release_url,
             pypi_url,
             doi_url,
-            f'morana=={version}',
+            f"morana=={version}",
         ),
-        repository_root / "docs/getting_started.md": (
+        repository_root
+        / "docs/getting_started.md": (
             release_url,
             pypi_url,
             doi_url,
-            f'morana=={version}',
+            f"morana=={version}",
             f"morana-{version}.tar.gz.sha256",
         ),
-        repository_root / "docs/index.md": (
+        repository_root
+        / "docs/index.md": (
             release_url,
             pypi_url,
             f"version `{version}`",
         ),
-        repository_root / "docs/citation.md": (
+        repository_root
+        / "docs/citation.md": (
             f"Morana {version}",
             doi_url,
         ),
@@ -193,9 +196,7 @@ def main() -> int:
     )
     for failure in failures:
         try:
-            label = failure.path.resolve().relative_to(
-                args.repository_root.resolve()
-            )
+            label = failure.path.resolve().relative_to(args.repository_root.resolve())
         except ValueError:
             label = failure.path
         print(f"{label}: {failure.reason}")

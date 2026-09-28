@@ -1053,9 +1053,9 @@ def _packed_cell_volumes(material_mesh, layout: _FiniteVolumeLayout) -> np.ndarr
     weights = np.empty(layout.size, dtype=float)
     for axial_index, active_cells in enumerate(layout.active_cells_by_layer):
         volume = material_mesh.cell_volume(axial_index)
-        for active_id in range(active_cells):
-            for group in range(layout.groups):
-                weights[layout.index(axial_index, active_id, group)] = volume
+        start = layout.node_offsets[axial_index] * layout.groups
+        stop = start + active_cells * layout.groups
+        weights[start:stop] = volume
     return weights
 
 
