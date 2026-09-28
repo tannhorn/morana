@@ -230,6 +230,16 @@ preconditioner once per `solve_keff()` call and reuses that setup for the
 call's inner right-hand sides. Each iterative criticality policy starts its
 first inner solve from zero and each later one from the preceding cleaned,
 pre-normalization inner solution.
+Morana leaves numerical-library thread limits to the calling process. During development, the maintained many-group SciPy study found no
+reliable wall-time benefit from increasing the thread limit above one; extra
+threads increased CPU use. For performance-sensitive runs with similar
+workloads, start by setting the relevant numerical-library limit to one
+before launching Python (for example, `OPENBLAS_NUM_THREADS=1` for OpenBLAS
+or `MKL_NUM_THREADS=1` for MKL), then compare with other settings on your
+own machine. This is a measurement starting point, not a universal optimum.
+The [performance baseline development note](development_notes/2026-09-15_finite_volume_performance_baseline.md)
+records the evidence and its limits.
+
 The [theory and numerical conventions](theory_references.md#linear-algebra-execution)
 define the linear residual, left preconditioning, ordinary power
 iteration, and fixed-Wielandt transformation. All numerical controls are

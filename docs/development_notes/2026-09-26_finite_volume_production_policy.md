@@ -2,6 +2,9 @@
 
 *Recorded 2026-09-26.*
 
+*Updated 2026-09-28: added the bounded assembly follow-up and refreshed
+profiling conclusion.*
+
 This note records the bounded many-group study used to refine criticality
 continuation, screen Krylov methods and preconditioners, select the maintained
 finite-volume solver policy, and identify the next optimization target. It is
@@ -277,6 +280,27 @@ preconditioner or spatial multilevel dependency is not justified next: the
 bounded candidates either lost end to end or added complexity without a
 distinct production role. Re-profile after any material assembly improvement
 before reconsidering the linear-solve path.
+
+### Assembly follow-up recorded 2026-09-28
+
+The bounded follow-up applied node-local and spatial-interface array
+batching to the finite-volume assembly path and to groupwise 
+directional-balance accounting. Across the six
+structured and permuted ordinary BiCGSTAB workloads, three repeated
+observations per case showed 82–94% lower median combined loss-and-fission
+assembly time than the retained pre-change production runs. Median end-to-end
+time fell 30–48% and peak RSS fell 23–53% in that matched comparison. Matrix
+dimensions and stored nonzero counts, checked numerical outcomes, and outer
+iteration counts matched. These are machine-local observations, not a speed
+promise for other problems or hardware. The maintained
+[performance study](https://github.com/tannhorn/morana/blob/main/studies/finite_volume_performance/README.md)
+owns the reproducible workload and protocol; raw result documents remain
+ignored under `artifacts/studies/`.
+
+After the assembly pass,
+inner linear solves occupied about 79–81% of median end-to-end time on the studied
+large cases. That makes inner solving the next material area to assess, without
+selecting a new preconditioner or solver policy.
 
 ## Interpretation
 
