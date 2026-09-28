@@ -42,11 +42,11 @@ from morana.operators import (
     _assemble_loss_matrix,
     _assemble_source_rhs,
     _checked_layout,
-    _exposed_face_conductance,
+    _exposed_face_conductances,
     _fission_production_functional,
     _finite_volume_assembly_context,
     _finite_volume_assembly_context_from_layout,
-    _internal_interface_conductance,
+    _internal_interface_conductances,
     _require_power_normalization_availability,
     extract_cross_section_data,
 )
@@ -1102,28 +1102,33 @@ def _directional_leakage_by_layer(
     for interface in context.internal_interfaces:
         if interface.radial:
             continue
-        for group in range(layout.groups):
-            primary = layout.index(
-                interface.primary_axial_index, interface.primary_active_id, group
-            )
-            secondary = layout.index(
-                interface.secondary_axial_index,
-                interface.secondary_active_id,
-                group,
-            )
-            contribution = _internal_interface_conductance(
-                context, interface, group=group
-            ) * (flux[primary] - flux[secondary])
-            directional[interface.primary_axial_index][1][group] += contribution
-            directional[interface.secondary_axial_index][1][group] -= contribution
+        primary = (
+            layout.node_offsets[interface.primary_axial_index]
+            + interface.primary_active_id
+        ) * layout.groups
+        secondary = (
+            layout.node_offsets[interface.secondary_axial_index]
+            + interface.secondary_active_id
+        ) * layout.groups
+        contribution = _internal_interface_conductances(context, interface) * (
+            flux[primary : primary + layout.groups]
+            - flux[secondary : secondary + layout.groups]
+        )
+        primary_axial = directional[interface.primary_axial_index][1]
+        secondary_axial = directional[interface.secondary_axial_index][1]
+        primary_axial += contribution
+        secondary_axial -= contribution
     for face in context.exposed_faces:
         topology = face.topology
         radial = topology.direction in material_mesh.mesh.direction_labels
         target = directional[topology.axial_index][0 if radial else 1]
         layer = context.cross_sections.layer(topology.axial_index)
-        for group in range(layout.groups):
-            row = layout.index(topology.axial_index, topology.active_id, group)
-            target[group] += _exposed_face_conductance(face, layer, group) * flux[row]
+        row = (
+            layout.node_offsets[topology.axial_index] + topology.active_id
+        ) * layout.groups
+        target += (
+            _exposed_face_conductances(face, layer) * flux[row : row + layout.groups]
+        )
     return tuple(directional)
 
 

@@ -1282,6 +1282,17 @@ def test_fixed_source_matches_hand_assembled_unequal_height_axial_system() -> No
 
     np.testing.assert_allclose(result.flux_layer(0), [[25.0 / 17.0]])
     np.testing.assert_allclose(result.flux_layer(1), [[37.0 / 17.0]])
+    area = configuration.material_mesh.axial_face_area(0)
+    interface_leakage = area / (0.5 + 1.0) * (25.0 / 17.0 - 37.0 / 17.0)
+    top_leakage = area / 1.0 * 37.0 / 17.0
+    np.testing.assert_allclose(
+        result.balance.by_layer_group["axial_leakage"][0],
+        [interface_leakage],
+    )
+    np.testing.assert_allclose(
+        result.balance.by_layer_group["axial_leakage"][1],
+        [-interface_leakage + top_leakage],
+    )
     for values in result.balance.by_layer_group["residual"]:
         np.testing.assert_allclose(values, [0.0], atol=1.0e-12)
     assert result.balance.scalar["residual"] == pytest.approx(0.0, abs=1.0e-12)

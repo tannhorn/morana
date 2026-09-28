@@ -1309,62 +1309,6 @@ def _check_global_loss_matrix(matrix: coo_matrix) -> None:
         raise ValueError("global loss matrix off-diagonal entries must be non-positive")
 
 
-def _weighted_harmonic_mean(
-    left_diffusion: float,
-    right_diffusion: float,
-    left_distance: float,
-    right_distance: float,
-) -> float:
-    """Return the distance-weighted harmonic interface diffusion coefficient."""
-    if left_diffusion == 0.0 or right_diffusion == 0.0:
-        return 0.0
-    return (left_distance + right_distance) / (
-        left_distance / left_diffusion + right_distance / right_diffusion
-    )
-
-
-def _radial_conductance(
-    left_diffusion: float,
-    right_diffusion: float,
-    face_area: float,
-    center_distance: float,
-) -> float:
-    """Return the harmonic-interface radial diffusion conductance."""
-    half_distance = center_distance / 2.0
-    return (
-        _weighted_harmonic_mean(
-            left_diffusion,
-            right_diffusion,
-            half_distance,
-            half_distance,
-        )
-        * face_area
-        / center_distance
-    )
-
-
-def _axial_conductance(
-    lower_diffusion: float,
-    upper_diffusion: float,
-    face_area: float,
-    lower_height: float,
-    upper_height: float,
-) -> float:
-    """Return the unequal-half-cell axial diffusion conductance."""
-    lower_half_height = lower_height / 2.0
-    upper_half_height = upper_height / 2.0
-    return (
-        _weighted_harmonic_mean(
-            lower_diffusion,
-            upper_diffusion,
-            lower_half_height,
-            upper_half_height,
-        )
-        * face_area
-        / (lower_half_height + upper_half_height)
-    )
-
-
 def _internal_interface_conductances(
     context: _FiniteVolumeAssemblyContext,
     interface: _InternalInterface,
@@ -1412,48 +1356,6 @@ def _exposed_face_conductances(
             return np.zeros_like(diffusion)
         denominator = diffusion + boundary.alpha * face.center_to_face
         return face.face_area * boundary.alpha * diffusion / denominator
-
-
-def _internal_interface_conductance(
-    context: _FiniteVolumeAssemblyContext,
-    interface: _InternalInterface,
-    *,
-    group: int,
-) -> float:
-    """Return the conductance across one canonical internal interface."""
-    material_mesh = context.material_mesh
-    primary_layer = context.cross_sections.layer(interface.primary_axial_index)
-    secondary_layer = context.cross_sections.layer(interface.secondary_axial_index)
-    if interface.radial:
-        return _radial_conductance(
-            primary_layer.diffusion[group, interface.primary_active_id],
-            secondary_layer.diffusion[group, interface.secondary_active_id],
-            interface.face_area,
-            2.0 * interface.center_to_face,
-        )
-    return _axial_conductance(
-        primary_layer.diffusion[group, interface.primary_active_id],
-        secondary_layer.diffusion[group, interface.secondary_active_id],
-        interface.face_area,
-        material_mesh.layer_height(interface.primary_axial_index),
-        material_mesh.layer_height(interface.secondary_axial_index),
-    )
-
-
-def _exposed_face_conductance(
-    face: _ExposedFace,
-    layer: CrossSectionLayerData,
-    group: int,
-) -> float:
-    """Return the loss conductance for one resolved exposed face."""
-    conductance, _ = _exposed_boundary_contribution(
-        boundary=face.boundary,
-        diffusion=layer.diffusion[group, face.topology.active_id],
-        face_area=face.face_area,
-        center_to_face=face.center_to_face,
-        group=group,
-    )
-    return conductance
 
 
 def _face_geometry(
