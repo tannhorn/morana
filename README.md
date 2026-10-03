@@ -53,17 +53,17 @@ and releasing AI-assisted contributions.
 
 ## Installation
 
-Morana requires Python 3.12 or newer. Version `0.1.0` is available as a
-[package distribution from PyPI](https://pypi.org/project/morana/0.1.0/), as a
-[source release from GitHub](https://github.com/tannhorn/morana/releases/tag/v0.1.0),
+Morana requires Python 3.12 or newer. Version `0.2.0` is available as a
+[package distribution from PyPI](https://pypi.org/project/morana/0.2.0/), as a
+[source release from GitHub](https://github.com/tannhorn/morana/releases/tag/v0.2.0),
 and from Zenodo under
-[DOI 10.5281/zenodo.22681316](https://doi.org/10.5281/zenodo.22681316). Install
+[DOI 10.5281/zenodo.23118502](https://doi.org/10.5281/zenodo.23118502). Install
 the exact release into an isolated environment:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install "morana==0.1.0"
+python -m pip install "morana==0.2.0"
 ```
 
 Follow [installation and
@@ -97,10 +97,12 @@ Markdown sources remain available in the repository's
 ## Citation
 
 Machine-readable citation metadata is provided in
-[`CITATION.cff`](CITATION.cff). The version DOI for Morana 0.1.0 is
-[10.5281/zenodo.22681316](https://doi.org/10.5281/zenodo.22681316).
-For the latest Morana release rather than a specific version, use the
-[all-versions DOI 10.5281/zenodo.22681315](https://doi.org/10.5281/zenodo.22681315).
+[`CITATION.cff`](CITATION.cff). The version DOI for Morana 0.2.0 is
+[10.5281/zenodo.23118502](https://doi.org/10.5281/zenodo.23118502).
+For project-level citation across releases, use the
+[concept DOI 10.5281/zenodo.22681315](https://doi.org/10.5281/zenodo.22681315).
+This all-versions DOI follows the latest release; use the version DOI to
+identify the exact archived source used in a calculation.
 
 ## License
 

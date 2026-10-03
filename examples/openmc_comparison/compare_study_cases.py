@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-from geometry import mini_core_coordinates
+from examples.openmc_comparison.geometry import mini_core_coordinates
 
 CE_TALLY_LAYOUT = "direct_profiles_v1"
 CE_AXIAL_BINS = 100

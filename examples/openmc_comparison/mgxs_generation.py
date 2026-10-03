@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from run_settings import EigenvalueRunSettings, active_history_label
+from examples.openmc_comparison.run_settings import (
+    EigenvalueRunSettings,
+    active_history_label,
+)
 
 SUPPORTED_GROUP_STRUCTURES = ("CASMO-8", "CASMO-25", "CASMO-40", "CASMO-70")
 TALLIED_GROUP_STRUCTURE = "CASMO-70"

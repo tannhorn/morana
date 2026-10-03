@@ -37,6 +37,7 @@ jobs:
           git cat-file -e "${TAG}^{tag}"
           test "$(git rev-parse "${TAG}^{commit}")" = "$(git rev-parse HEAD)"
           python -c 'import pathlib, tomllib; metadata = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))["project"]; assert metadata["name"] == "morana"; assert metadata["version"] == __import__("os").environ["VERSION"]; assert metadata["requires-python"] == ">=3.12"'
+          python scripts/check_release_consistency.py --expected-version "$VERSION"
       - name: Set up Python
         uses: actions/setup-python@v6
         with:

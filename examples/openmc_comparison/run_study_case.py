@@ -26,15 +26,18 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from artifact_paths import ARTIFACT_ROOT, configure_matplotlib_cache
-from compare_study_cases import compare_morana_to_ce
-from geometry import (
+from examples.openmc_comparison.artifact_paths import (
+    ARTIFACT_ROOT,
+    configure_matplotlib_cache,
+)
+from examples.openmc_comparison.compare_study_cases import compare_morana_to_ce
+from examples.openmc_comparison.geometry import (
     NUM_CORE_RINGS,
     active_height_cm,
     lattice_pitch_cm,
     mini_core_coordinates,
 )
-from mgxs_generation import (
+from examples.openmc_comparison.mgxs_generation import (
     DEFAULT_GENERATIONS_PER_BATCH,
     DEFAULT_INACTIVE,
     DEFAULT_PARTICLES,
@@ -44,7 +47,7 @@ from mgxs_generation import (
     SUPPORTED_GROUP_STRUCTURES,
     TALLIED_GROUP_STRUCTURE,
 )
-from specification import TEMPERATURE_K
+from examples.openmc_comparison.specification import TEMPERATURE_K
 
 if TYPE_CHECKING:
     from morana import (

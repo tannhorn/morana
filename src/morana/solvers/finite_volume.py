@@ -14,8 +14,8 @@ from scipy.sparse.linalg import (
     LinearOperator,
     MatrixRankWarning,
     SuperLU,
+    bicgstab,
     gmres,
-    spilu,
     splu,
     spsolve,
 )
@@ -42,20 +42,20 @@ from morana.operators import (
     _assemble_loss_matrix,
     _assemble_source_rhs,
     _checked_layout,
-    _exposed_face_conductance,
+    _exposed_face_conductances,
     _fission_production_functional,
     _finite_volume_assembly_context,
     _finite_volume_assembly_context_from_layout,
-    _internal_interface_conductance,
+    _internal_interface_conductances,
     _require_power_normalization_availability,
     extract_cross_section_data,
 )
 from morana.results import FixedSourceBalance, KeffBalance, Result
 from morana.solve_settings import (
+    BicgstabLinearSolveSettings,
     DirectLinearSolveSettings,
     FixedSourceSettings,
     GmresLinearSolveSettings,
-    IluPreconditioner,
     JacobiPreconditioner,
     KeffSettings,
     LinearSolveSettings,
@@ -111,7 +111,7 @@ class _KeffProblem:
 
 @dataclass(frozen=True)
 class _PreparedLinearSolve:
-    """Per-call reusable direct factorization or GMRES preconditioner."""
+    """Per-call reusable direct factorization or iterative preconditioner."""
 
     linear_solve: LinearSolveSettings
     factorization: SuperLU | None = None
@@ -125,8 +125,8 @@ def solve_fixed_source(
     """Solve the layered multigroup hex-z fixed-source problem.
 
     The optional configured volumetric source and additive boundary terms form
-    the right-hand side. The solver applies the configured direct or GMRES
-    policy to the coupled loss-minus-fission system,
+    the right-hand side. The solver applies the configured direct, GMRES, or
+    BiCGSTAB policy to the coupled loss-minus-fission system,
     accepts only negative flux roundoff within
     ``flux_nonnegativity_tolerance``, and checks the relative linear
     residual against ``settings.linear_solve``'s relative-residual
@@ -447,11 +447,17 @@ def _keff_inner_solve_matrix(
 def _iterate_keff(
     problem: _KeffProblem,
 ) -> tuple[np.ndarray, KeffSolveReport]:
-    """Return fission-normalized flux and report from the selected policy."""
+    """Return fission-normalized flux and report from the selected policy.
+
+    Iterative inner solves after the first use the preceding cleaned,
+    pre-normalization inner solution as their starting guess. The state exists
+    only in this call and is never used for direct or fixed-source solves.
+    """
     flux = np.ones(problem.loss_matrix.shape[0], dtype=float)
     flux /= float(np.dot(problem.fission_production_functional, flux))
     previous_keff = 1.0
     outer_iterations = []
+    previous_cleaned_inner_solution: np.ndarray | None = None
 
     settings = problem.settings
     solve_label = _KEFF_ITERATION_SOLVE_LABELS[settings.eigenvalue_iteration.kind]
@@ -462,8 +468,24 @@ def _iterate_keff(
             fission_source,
             problem.inner_linear_solve,
             solve_label,
+            initial_guess=(
+                previous_cleaned_inner_solution
+                if isinstance(
+                    problem.inner_linear_solve.linear_solve,
+                    (GmresLinearSolveSettings, BicgstabLinearSolveSettings),
+                )
+                else None
+            ),
         )
         candidate = _clean_keff_flux(candidate, settings, solve_label)
+        if isinstance(
+            problem.inner_linear_solve.linear_solve,
+            (GmresLinearSolveSettings, BicgstabLinearSolveSettings),
+        ):
+            # Save before fission-source normalization.  A new owned array
+            # prevents later in-place normalization from changing the next
+            # inner solve's starting vector.
+            previous_cleaned_inner_solution = np.array(candidate, copy=True)
         _, linear_relative_residual = _require_linear_residual(
             problem.inner_solve_matrix,
             candidate,
@@ -602,7 +624,9 @@ def _prepare_keff_linear_solve(
         )
     return _PreparedLinearSolve(
         linear_solve=linear_solve,
-        preconditioner=_build_gmres_preconditioner(matrix, linear_solve, solve_name),
+        preconditioner=_build_iterative_preconditioner(
+            matrix, linear_solve, solve_name
+        ),
     )
 
 
@@ -612,11 +636,15 @@ def _solve_linear_system(
     linear_solve: LinearSolveSettings,
     solve_name: str,
 ) -> tuple[np.ndarray, int]:
-    """Execute one fixed-source direct or GMRES linear solve."""
+    """Execute one fixed-source direct or iterative linear solve."""
     if isinstance(linear_solve, DirectLinearSolveSettings):
         return _solve_direct_loss_system(matrix, rhs, solve_name), 1
-    preconditioner = _build_gmres_preconditioner(matrix, linear_solve, solve_name)
-    return _solve_gmres_system(matrix, rhs, linear_solve, preconditioner, solve_name)
+    preconditioner = _build_iterative_preconditioner(matrix, linear_solve, solve_name)
+    if isinstance(linear_solve, GmresLinearSolveSettings):
+        return _solve_gmres_system(
+            matrix, rhs, linear_solve, preconditioner, solve_name
+        )
+    return _solve_bicgstab_system(matrix, rhs, linear_solve, preconditioner, solve_name)
 
 
 def _solve_prepared_linear_system(
@@ -624,62 +652,66 @@ def _solve_prepared_linear_system(
     rhs: np.ndarray,
     prepared: _PreparedLinearSolve,
     solve_name: str,
+    *,
+    initial_guess: np.ndarray | None = None,
 ) -> tuple[np.ndarray, int]:
     """Execute one criticality inner solve with per-call reusable setup."""
     if isinstance(prepared.linear_solve, DirectLinearSolveSettings):
+        if initial_guess is not None:
+            raise RuntimeError("direct criticality solve cannot use an initial guess")
         if prepared.factorization is None:
             raise RuntimeError("direct criticality solve is missing its factorization")
         return (
             _solve_factorized_system(prepared.factorization, rhs, solve_name),
             1,
         )
-    return _solve_gmres_system(
+    if isinstance(prepared.linear_solve, GmresLinearSolveSettings):
+        return _solve_gmres_system(
+            matrix,
+            rhs,
+            prepared.linear_solve,
+            prepared.preconditioner,
+            solve_name,
+            initial_guess=initial_guess,
+        )
+    return _solve_bicgstab_system(
         matrix,
         rhs,
         prepared.linear_solve,
         prepared.preconditioner,
         solve_name,
+        initial_guess=initial_guess,
     )
 
 
-def _build_gmres_preconditioner(
+def _build_iterative_preconditioner(
     matrix: csr_matrix,
-    settings: GmresLinearSolveSettings,
+    settings: GmresLinearSolveSettings | BicgstabLinearSolveSettings,
     solve_name: str,
 ) -> LinearOperator | None:
-    """Build one checked left preconditioner for restarted GMRES."""
+    """Build one checked left preconditioner for an iterative solve."""
     if isinstance(settings.preconditioner, NoPreconditioner):
         return None
     if isinstance(settings.preconditioner, JacobiPreconditioner):
         diagonal = np.asarray(matrix.diagonal(), dtype=float)
-        if not np.all(np.isfinite(diagonal)) or np.any(diagonal == 0.0):
+        with np.errstate(divide="ignore", over="ignore", under="ignore"):
+            inverse_diagonal = 1.0 / diagonal
+        if (
+            not np.all(np.isfinite(diagonal))
+            or np.any(diagonal == 0.0)
+            or not np.all(np.isfinite(inverse_diagonal))
+            or np.any(inverse_diagonal == 0.0)
+        ):
             raise ValueError(
                 f"{solve_name} Jacobi preconditioner requires finite nonzero "
-                "diagonal entries"
+                "diagonal entries and reciprocals"
             )
-        inverse_diagonal = 1.0 / diagonal
         return LinearOperator(
             matrix.shape,
             matvec=lambda vector: inverse_diagonal * vector,
             dtype=float,
         )
-    if isinstance(settings.preconditioner, IluPreconditioner):
-        try:
-            factorization = spilu(
-                matrix.tocsc(),
-                drop_tol=settings.preconditioner.drop_tolerance,
-                fill_factor=settings.preconditioner.fill_factor,
-            )
-        except (RuntimeError, ValueError) as exc:
-            raise ValueError(
-                f"{solve_name} threshold-ILU preconditioner is unusable"
-            ) from exc
-        return LinearOperator(
-            matrix.shape,
-            matvec=lambda vector: np.asarray(factorization.solve(vector), dtype=float),
-            dtype=float,
-        )
-    raise RuntimeError("unsupported GMRES preconditioner")
+    raise RuntimeError("unsupported iterative preconditioner")
 
 
 def _solve_gmres_system(
@@ -688,9 +720,18 @@ def _solve_gmres_system(
     settings: GmresLinearSolveSettings,
     preconditioner: LinearOperator | None,
     solve_name: str,
+    *,
+    initial_guess: np.ndarray | None = None,
 ) -> tuple[np.ndarray, int]:
-    """Run restarted GMRES from zero and return its completed iteration count."""
+    """Run restarted GMRES and return its completed iteration count.
+
+    Fixed-source execution starts from zero. Criticality supplies the prior
+    cleaned inner solution after its first GMRES solve. A supplied initial
+    guess is checked and copied before it reaches SciPy so mutable caller state
+    cannot be retained or altered.
+    """
     krylov_iterations = 0
+    starting_flux = _iterative_initial_guess(rhs, initial_guess, solve_name, "GMRES")
 
     def count_iteration(_residual: float) -> None:
         """Record one inner Krylov iteration reported by SciPy."""
@@ -701,7 +742,7 @@ def _solve_gmres_system(
         flux, status = gmres(
             matrix,
             rhs,
-            x0=np.zeros_like(rhs),
+            x0=starting_flux,
             rtol=settings.relative_residual_tolerance,
             atol=0.0,
             restart=settings.restart,
@@ -721,6 +762,73 @@ def _solve_gmres_system(
     if not np.all(np.isfinite(flux)):
         raise ValueError(f"{solve_name} GMRES inner solve produced non-finite flux")
     return flux, krylov_iterations
+
+
+def _solve_bicgstab_system(
+    matrix: csr_matrix,
+    rhs: np.ndarray,
+    settings: BicgstabLinearSolveSettings,
+    preconditioner: LinearOperator | None,
+    solve_name: str,
+    *,
+    initial_guess: np.ndarray | None = None,
+) -> tuple[np.ndarray, int]:
+    """Run BiCGSTAB and return its completed iteration count.
+
+    Fixed-source execution starts from zero. Criticality supplies the prior
+    cleaned inner solution after its first BiCGSTAB solve. A supplied initial
+    guess is checked and copied before it reaches SciPy so mutable caller state
+    cannot be retained or altered.
+    """
+    krylov_iterations = 0
+    starting_flux = _iterative_initial_guess(rhs, initial_guess, solve_name, "BiCGSTAB")
+
+    def count_iteration(_candidate: np.ndarray) -> None:
+        """Record one completed BiCGSTAB iteration reported by SciPy."""
+        nonlocal krylov_iterations
+        krylov_iterations += 1
+
+    try:
+        flux, status = bicgstab(
+            matrix,
+            rhs,
+            x0=starting_flux,
+            rtol=settings.relative_residual_tolerance,
+            atol=0.0,
+            maxiter=settings.max_krylov_iterations,
+            M=preconditioner,
+            callback=count_iteration,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise ValueError(f"{solve_name} BiCGSTAB inner solve failed") from exc
+    if status > 0:
+        raise ValueError(
+            f"{solve_name} BiCGSTAB did not converge within "
+            f"max_krylov_iterations={settings.max_krylov_iterations}"
+        )
+    if status < 0:
+        raise ValueError(
+            f"{solve_name} BiCGSTAB inner solve broke down with status={status}"
+        )
+    flux = np.asarray(flux, dtype=float)
+    if not np.all(np.isfinite(flux)):
+        raise ValueError(f"{solve_name} BiCGSTAB inner solve produced non-finite flux")
+    return flux, krylov_iterations
+
+
+def _iterative_initial_guess(
+    rhs: np.ndarray,
+    initial_guess: np.ndarray | None,
+    solve_name: str,
+    method_name: str,
+) -> np.ndarray:
+    """Return one owned finite starting vector for an iterative solve."""
+    if initial_guess is None:
+        return np.zeros_like(rhs)
+    starting_flux = np.asarray(initial_guess, dtype=float)
+    if starting_flux.shape != rhs.shape or not np.all(np.isfinite(starting_flux)):
+        raise ValueError(f"{solve_name} {method_name} initial guess is invalid")
+    return np.array(starting_flux, copy=True)
 
 
 def _solve_factorized_system(
@@ -945,9 +1053,9 @@ def _packed_cell_volumes(material_mesh, layout: _FiniteVolumeLayout) -> np.ndarr
     weights = np.empty(layout.size, dtype=float)
     for axial_index, active_cells in enumerate(layout.active_cells_by_layer):
         volume = material_mesh.cell_volume(axial_index)
-        for active_id in range(active_cells):
-            for group in range(layout.groups):
-                weights[layout.index(axial_index, active_id, group)] = volume
+        start = layout.node_offsets[axial_index] * layout.groups
+        stop = start + active_cells * layout.groups
+        weights[start:stop] = volume
     return weights
 
 
@@ -994,28 +1102,33 @@ def _directional_leakage_by_layer(
     for interface in context.internal_interfaces:
         if interface.radial:
             continue
-        for group in range(layout.groups):
-            primary = layout.index(
-                interface.primary_axial_index, interface.primary_active_id, group
-            )
-            secondary = layout.index(
-                interface.secondary_axial_index,
-                interface.secondary_active_id,
-                group,
-            )
-            contribution = _internal_interface_conductance(
-                context, interface, group=group
-            ) * (flux[primary] - flux[secondary])
-            directional[interface.primary_axial_index][1][group] += contribution
-            directional[interface.secondary_axial_index][1][group] -= contribution
+        primary = (
+            layout.node_offsets[interface.primary_axial_index]
+            + interface.primary_active_id
+        ) * layout.groups
+        secondary = (
+            layout.node_offsets[interface.secondary_axial_index]
+            + interface.secondary_active_id
+        ) * layout.groups
+        contribution = _internal_interface_conductances(context, interface) * (
+            flux[primary : primary + layout.groups]
+            - flux[secondary : secondary + layout.groups]
+        )
+        primary_axial = directional[interface.primary_axial_index][1]
+        secondary_axial = directional[interface.secondary_axial_index][1]
+        primary_axial += contribution
+        secondary_axial -= contribution
     for face in context.exposed_faces:
         topology = face.topology
         radial = topology.direction in material_mesh.mesh.direction_labels
         target = directional[topology.axial_index][0 if radial else 1]
         layer = context.cross_sections.layer(topology.axial_index)
-        for group in range(layout.groups):
-            row = layout.index(topology.axial_index, topology.active_id, group)
-            target[group] += _exposed_face_conductance(face, layer, group) * flux[row]
+        row = (
+            layout.node_offsets[topology.axial_index] + topology.active_id
+        ) * layout.groups
+        target += (
+            _exposed_face_conductances(face, layer) * flux[row : row + layout.groups]
+        )
     return tuple(directional)
 
 

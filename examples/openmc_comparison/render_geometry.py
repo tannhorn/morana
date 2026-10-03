@@ -3,7 +3,7 @@
 Run from the repository root with an active Python environment that provides
 OpenMC:
 
-``python examples/openmc_comparison/render_geometry.py``
+``python -m examples.openmc_comparison.render_geometry``
 
 The script does not run particle transport.
 """
@@ -15,13 +15,13 @@ from pathlib import Path
 
 import openmc
 
-from artifact_paths import ARTIFACT_ROOT
-from case import (
+from examples.openmc_comparison.artifact_paths import ARTIFACT_ROOT
+from examples.openmc_comparison.case import (
     build_mini_core_model,
     build_unit_cell_model,
 )
-from geometry import NUM_CORE_RINGS, lattice_pitch_cm
-from plotting import MATERIAL_COLORS_RGB
+from examples.openmc_comparison.geometry import NUM_CORE_RINGS, lattice_pitch_cm
+from examples.openmc_comparison.plotting import MATERIAL_COLORS_RGB
 
 DEFAULT_OUTPUT = ARTIFACT_ROOT / "geometry"
 

@@ -29,10 +29,10 @@ from morana.hex_planar_mesh import HexPlanarMesh, OpenMCIndex
 from morana.normalization import FissionSourceNormalization, PowerNormalization
 from morana.results import CellInspection, FixedSourceBalance, KeffBalance, Result
 from morana.solve_settings import (
+    BicgstabLinearSolveSettings,
     DirectLinearSolveSettings,
     FixedSourceSettings,
     GmresLinearSolveSettings,
-    IluPreconditioner,
     JacobiPreconditioner,
     KeffSettings,
     NoPreconditioner,
@@ -45,6 +45,7 @@ __all__ = [
     "BoundaryCondition",
     "BoundaryConditionSet",
     "BoundarySelector",
+    "BicgstabLinearSolveSettings",
     "CellSource",
     "CellInspection",
     "CrossSections",
@@ -58,7 +59,6 @@ __all__ = [
     "FixedSourceSettings",
     "GmresLinearSolveSettings",
     "HexPlanarMesh",
-    "IluPreconditioner",
     "JacobiPreconditioner",
     "KeffSettings",
     "KeffBalance",

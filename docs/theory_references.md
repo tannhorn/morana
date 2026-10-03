@@ -100,10 +100,24 @@ variable-height axial stack.
 ### Ordering and assembly
 
 Public group-indexed data are ordered fast to thermal. Layered source and result
-arrays are group-major with shape `(G, N)`, while material transfer matrices
-use `(g_from, g_to)`. Global finite-volume operators use node-major,
-group-fastest packing, `I(n, g) = nG + g`, where $n$ is a packed active-node
-index.
+arrays are group-major with shape `(G, N[z])`, while material transfer matrices
+use `(g_from, g_to)`. Here $N[z]$ is the number of active cells in
+bottom-to-top layer $z$. The slice-local active ID $a$ follows the active
+subset of the planar mesh's documented order. With layer node offset
+$O_z=\sum_{j<z}N[j]$, every global finite-volume operator and right-hand side
+uses node-major, group-fastest packing
+
+$$
+I(z,a,g)=(O_z+a)G+g.
+$$
+
+Thus layers vary slowest and group varies fastest, including when the axial
+stack is ragged. The complete vector length is $G\sum_zN[z]$ and every global
+matrix has that value as both dimensions. A matrix row identifies the balance
+equation's destination group and cell; a column identifies the candidate
+flux's source group and cell. The
+[operator-assembly guide](operator_assembly.md#exact-degree-of-freedom-mapping)
+gives the public geometry lookups and explicit packing and unpacking recipe.
 
 ### Scattering, fission, and operator split
 
@@ -285,8 +299,9 @@ $\mathcal{C}$ and $F$ to the cell balances.
 A geometric active cell is $c=(m,k)$, where $m$ is its full-lattice
 `planar_id` and $k$ is its `axial_index`. The same $m$ denotes the same planar
 position in every layer, whereas `active_id` is slice-local and can differ
-between layers. The packed-node index $n(c)$ appears only in assembled vectors
-and matrices.
+between layers. For the active ID $a$ corresponding to $m$ in layer $k$, the
+packed-node index used below is $n(c)=O_k+a$; the complete degree-of-freedom
+index is $I(k,a,g)=n(c)G+g$.
 
 Let the cell have volume $V_c$, group-$g$ cell-average flux $\phi_{g,c}$,
 diffusion coefficient $D_{g,c}$, derived removal cross section
@@ -831,32 +846,35 @@ successive physical flux shapes, weighting each cell by its volume.
 The fixed-source system uses $B=A-F$ and right-hand side $\mathbf b$. An
 ordinary criticality inner iteration uses $B=A$ and right-hand side
 $F\boldsymbol\phi^{(n)}$; a fixed-Wielandt iteration changes $B$ as defined
-below. Morana offers either a sparse direct reference solve or restarted GMRES
-from the zero initial guess. Both policies solve the same algebraic problem
-with the same physical-flux acceptance criteria.
+below. Morana offers a sparse direct reference solve, restarted GMRES, or
+BiCGSTAB. Fixed-source iteration and the first criticality inner solve use the
+zero initial guess; later iterative criticality inner solves use the preceding
+cleaned, pre-normalization inner solution. All policies solve the same
+algebraic problem with the same physical-flux acceptance criteria.
 
-For GMRES with a preconditioner $P$, the iterated system is the
-left-preconditioned form
+For either iterative policy with a preconditioner $P$, the iterated system is
+the left-preconditioned form
 
 $$
 P^{-1}B\mathbf x=P^{-1}\mathbf b.
 $$
 
 `NoPreconditioner` sets $P=I$. `JacobiPreconditioner` uses the finite,
-nonzero diagonal of $B$ as $P$. `IluPreconditioner` uses a threshold
-incomplete-LU factorization of $B$ with the configured drop tolerance and
-fill bound as $P$. These choices change GMRES's Krylov iteration, not the
-system $B\mathbf x=\mathbf b$ or the accepted physical flux. The GMRES and
+nonzero diagonal of $B$ as $P$ and additionally requires every reciprocal to
+be finite and nonzero. These choices change the Krylov iteration, not the
+system $B\mathbf x=\mathbf b$ or the accepted physical flux. The Krylov and
 preconditioner constructions are described by [Barrett et al.
 (1994)](#barrett-et-al-1994).
 
-Morana uses SciPy's left-preconditioned GMRES implementation. It minimizes a
-preconditioned residual, whereas SciPy tests its own termination criterion
-against the original residual
-([SciPy GMRES documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.gmres.html)).
+Morana uses SciPy's left-preconditioned GMRES and BiCGSTAB implementations with
+zero absolute tolerance. GMRES minimizes a preconditioned residual, whereas
+SciPy tests its own termination criterion against the original residual
+([SciPy GMRES documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.gmres.html));
+BiCGSTAB uses stabilized bi-conjugate-gradient recurrences
+([SciPy BiCGSTAB documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.linalg.bicgstab.html)).
 
 Morana independently applies its own symmetric true-relative-residual check
-to every direct or GMRES candidate,
+to every direct, GMRES, or BiCGSTAB candidate,
 
 $$
 r_{\mathrm{lin}}(B,\mathbf x,\mathbf b)=
@@ -1082,8 +1100,8 @@ units $\mathrm{n\,s^{-1}}$.
 
 ## References
 
-<a id="barrett-et-al-1994"></a>
-**Barrett et al. (1994).** R. Barrett, M. Berry, T. F. Chan, J. Demmel,
+**Barrett et al. (1994).**{#barrett-et-al-1994} R. Barrett, M. Berry,
+T. F. Chan, J. Demmel,
 J. Donato, J. Dongarra, V. Eijkhout, R. Pozo, C. Romine, and H. van der Vorst,
 *Templates for the Solution of Linear Systems: Building Blocks for Iterative
 Methods*, 2nd edition, SIAM, 1994. Open online sections:
@@ -1092,42 +1110,42 @@ Methods*, 2nd edition, SIAM, 1994. Open online sections:
 [3.2, “Jacobi Preconditioning”](https://www.netlib.org/linalg/html_templates/node55.html);
 and [3.4, “Incomplete Factorization Preconditioners”](https://www.netlib.org/linalg/html_templates/node59.html).
 
-<a id="bell-and-glasstone-1970"></a>
-**Bell and Glasstone (1970).** G. I. Bell and S. Glasstone, *Nuclear Reactor
+**Bell and Glasstone (1970).**{#bell-and-glasstone-1970} G. I. Bell and
+S. Glasstone, *Nuclear Reactor
 Theory*, TID-25606, U.S. Atomic Energy Commission, 1970.
 [OSTI bibliographic record](https://www.osti.gov/biblio/4074688) and
 [open full text](https://www.osti.gov/servlets/purl/4074688).
 
-<a id="boyd-et-al-2019"></a>
-**Boyd et al. (2019).** W. Boyd, A. Nelson, P. K. Romano, S. Shaner,
+**Boyd et al. (2019).**{#boyd-et-al-2019} W. Boyd, A. Nelson, P. K. Romano,
+S. Shaner,
 B. Forget, and K. Smith, “Multigroup Cross-Section Generation with the OpenMC
 Monte Carlo Particle Transport Code,” *Nuclear Technology*, 205(7), 928–944,
 2019, DOI
 [10.1080/00295450.2019.1571828](https://doi.org/10.1080/00295450.2019.1571828).
 [Open full text](https://www.osti.gov/servlets/purl/1559869).
 
-<a id="eymard-gallouet-herbin-2000"></a>
-**Eymard, Gallouët, and Herbin (2000).** R. Eymard, T. Gallouët, and
+**Eymard, Gallouët, and Herbin (2000).**{#eymard-gallouet-herbin-2000}
+R. Eymard, T. Gallouët, and
 R. Herbin, “Finite Volume Methods,” in *Handbook of Numerical Analysis*,
 volume 7, pp. 713–1020, 2000, DOI
 [10.1016/S1570-8659(00)07005-8](https://doi.org/10.1016/S1570-8659(00)07005-8).
 [Open author manuscript](https://raphaeleh.github.io/PUBLI/bookevol.pdf) and
 [HAL record](https://hal.science/hal-02100732v2).
 
-<a id="gu-2000"></a>
-**Gu (2000).** M. Gu, “Power Method” (Section 4.3.1), in Z. Bai, J. Demmel,
+**Gu (2000).**{#gu-2000} M. Gu, “Power Method” (Section 4.3.1), in Z. Bai,
+J. Demmel,
 J. Dongarra, A. Ruhe, and H. van der Vorst, editors, *Templates for the
 Solution of Algebraic Eigenvalue Problems: A Practical Guide*, SIAM,
 Philadelphia, 2000. [Open online section](https://netlib.org/utk/people/JackDongarra/etemplates/node95.html).
 
-<a id="larsen-et-al-2019"></a>
-**Larsen et al. (2019).** E. W. Larsen, B. S. Collins, B. A. Kochunas, and
+**Larsen et al. (2019).**{#larsen-et-al-2019} E. W. Larsen, B. S. Collins,
+B. A. Kochunas, and
 S. R. Stimpson, editors, *MPACT Theory Manual*, version 4.1,
 CASL-U-2019-1874-001, Consortium for Advanced Simulation of LWRs, 2019.
 [Open full text, Section 7.7 “CMFD Eigenvalue Solvers”](https://vera.ornl.gov/wp-content/uploads/2020/07/CASL-U-2019-1874-001_MPACT-Theory-Manual.pdf).
 
-<a id="vanyi-et-al-2021"></a>
-**Ványi et al. (2021).** A. S. Ványi, M. Hursin, and S. Czifrus,
+**Ványi et al. (2021).**{#vanyi-et-al-2021} A. S. Ványi, M. Hursin, and
+S. Czifrus,
 “Investigation of Recently Introduced Diffusion Coefficient Generation
 Methods,” in *Proceedings of the 30th International Conference Nuclear Energy
 for New Europe*, Bled, Slovenia, September 6–9, 2021, paper 311.

@@ -22,20 +22,23 @@ from pathlib import Path
 import numpy as np
 import openmc
 
-from artifact_paths import ARTIFACT_ROOT
-from case import build_mini_core_model, configure_eigenvalue_settings
-from geometry import (
+from examples.openmc_comparison.artifact_paths import ARTIFACT_ROOT
+from examples.openmc_comparison.case import (
+    build_mini_core_model,
+    configure_eigenvalue_settings,
+)
+from examples.openmc_comparison.geometry import (
     NUM_CORE_RINGS,
     active_height_cm,
     lattice_pitch_cm,
     mini_core_coordinates,
 )
-from run_settings import (
+from examples.openmc_comparison.run_settings import (
     EigenvalueRunSettings,
     active_history_label,
     newest_compatible_openmc_statepoint,
 )
-from specification import TEMPERATURE_K
+from examples.openmc_comparison.specification import TEMPERATURE_K
 
 DEFAULT_PARTICLES = 20_000
 DEFAULT_BATCHES = 5_200

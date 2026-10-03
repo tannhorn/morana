@@ -29,8 +29,8 @@ class LinearSolveReport:
     Attributes
     ----------
     linear_solve
-        Immutable strategy and, for GMRES, preconditioner policy used by the
-        completed solve.
+        Immutable strategy and, for an iterative solve, preconditioner policy
+        used by the completed solve.
     iterations
         Nonnegative number of direct or Krylov iterations reported for this
         solve.
@@ -83,7 +83,7 @@ class LinearSolveReport:
 
     @property
     def preconditioner(self) -> LinearPreconditioner | None:
-        """Return the typed GMRES preconditioner, or ``None`` for direct solves."""
+        """Return the iterative preconditioner, or ``None`` for direct solves."""
         if isinstance(self.linear_solve, DirectLinearSolveSettings):
             return None
         return self.linear_solve.preconditioner

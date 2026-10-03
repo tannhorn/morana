@@ -2,7 +2,7 @@
 
 Run from the repository root:
 
-``python examples/openmc_comparison/check_comparison_reader.py``
+``python -m examples.openmc_comparison.check_comparison_reader``
 
 The check creates no persistent artifacts. It verifies exact axial rebinning,
 raw-to-normalized profile consistency, CE provenance reporting, rejection of
@@ -18,17 +18,23 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 
-from artifact_paths import configure_matplotlib_cache
-from compare_study_cases import (
+from examples.openmc_comparison.artifact_paths import configure_matplotlib_cache
+from examples.openmc_comparison.compare_study_cases import (
     CE_AXIAL_BINS,
     CE_PLANAR_CELLS,
     CE_TALLY_LAYOUT,
     EXPECTED_PLANAR_COORDINATES,
     compare_morana_to_ce,
 )
-from geometry import NUM_CORE_RINGS, active_height_cm, lattice_pitch_cm
-from run_study_case import _shared_planar_production_order
-from specification import TEMPERATURE_K
+from examples.openmc_comparison.geometry import (
+    NUM_CORE_RINGS,
+    active_height_cm,
+    lattice_pitch_cm,
+)
+from examples.openmc_comparison.run_study_case import (
+    _shared_planar_production_order,
+)
+from examples.openmc_comparison.specification import TEMPERATURE_K
 
 configure_matplotlib_cache()
 

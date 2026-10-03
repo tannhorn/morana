@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 QUICKSTART = REPOSITORY_ROOT / "examples" / "quickstart.py"
 GETTING_STARTED_GUIDE = REPOSITORY_ROOT / "docs" / "getting_started.md"
 

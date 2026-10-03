@@ -11,7 +11,7 @@ from math import hypot, isfinite
 
 import openmc
 
-from geometry import (
+from examples.openmc_comparison.geometry import (
     FUEL_DIAMETER_IN,
     FUEL_ROD_OUTER_DIAMETER_IN,
     FUEL_CAN_ORIENTATION,
@@ -30,7 +30,7 @@ from geometry import (
     rod_centers,
     wire_centers,
 )
-from specification import TEMPERATURE_K
+from examples.openmc_comparison.specification import TEMPERATURE_K
 
 
 def material_definitions() -> openmc.Materials:

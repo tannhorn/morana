@@ -14,6 +14,7 @@ from plotly.colors import get_colorscale
 import pytest
 
 from morana import (
+    BicgstabLinearSolveSettings,
     FissionData,
     FissionTransfer,
     SeparableFission,
@@ -37,6 +38,7 @@ from morana import (
     KeffSolveReport,
     KeffOuterIterationReport,
     LinearSolveReport,
+    NoPreconditioner,
     OpenMCIndex,
     PowerIterationSettings,
     ProblemConfiguration,
@@ -302,7 +304,7 @@ def test_result_archive_round_trip_preserves_checked_provenance(tmp_path: Path) 
     with zipfile.ZipFile(archive) as container:
         manifest = json.loads(container.read("manifest.json"))
         assert manifest["format"] == "morana-result"
-        assert manifest["schema_version"] == 8
+        assert manifest["schema_version"] == 9
         assert "revision" not in manifest["result"]["configuration_snapshot"]
         assert "solve_mode" not in manifest["result"]
         assert any(
@@ -415,7 +417,7 @@ def test_result_archive_rejects_linear_residual_above_policy_tolerance(
         Result.load_from_disk(inconsistent)
 
 
-@pytest.mark.parametrize("schema_version", [1, 2, 3, 4, 5, 6, 7, 9])
+@pytest.mark.parametrize("schema_version", [1, 2, 3, 4, 5, 6, 7, 8, 10])
 def test_result_archive_rejects_other_schema(
     tmp_path: Path, schema_version: int
 ) -> None:
@@ -505,6 +507,25 @@ def test_result_archive_round_trips_keff_settings(tmp_path: Path) -> None:
     assert loaded.normalization == normalization
     assert loaded.execution_report == result.execution_report
     assert loaded.execution_report.eigenvalue_iteration == policy
+
+
+def test_result_archive_round_trips_bicgstab_settings(tmp_path: Path) -> None:
+    """Archive provenance should preserve the BiCGSTAB settings variant."""
+    linear_solve = BicgstabLinearSolveSettings(
+        relative_residual_tolerance=1.0e-12,
+        max_krylov_iterations=20,
+        preconditioner=NoPreconditioner(),
+    )
+    settings = FixedSourceSettings(linear_solve=linear_solve)
+    result = solve_fixed_source(make_configuration(), settings)
+    archive = tmp_path / "bicgstab.morana-result"
+
+    result.save_to_disk(archive)
+    loaded = Result.load_from_disk(archive)
+
+    assert loaded.solve_settings == settings
+    assert loaded.execution_report == result.execution_report
+    assert loaded.execution_report.strategy == "bicgstab"
 
 
 def test_result_archive_round_trips_power_normalization(tmp_path: Path) -> None:

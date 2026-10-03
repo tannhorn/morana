@@ -33,9 +33,10 @@ the representation the caller selected instead of converting it to a flattened
 or alternate form. `solve_mode` is derived from the retained values when the
 result is reconstructed; it is not stored separately.
 
-Archives use pre-release schema version 8, which has no backward-compatibility
-guarantee. Readers accept only this representation and reject every other
-schema version or malformed tagged record.
+Archives use schema version 9. During Morana's early development, archive
+schemas have no backward-compatibility guarantee. Readers accept only the
+current representation and reject every other schema version or malformed
+tagged record.
 
 ## Integrity and consistency checks
 

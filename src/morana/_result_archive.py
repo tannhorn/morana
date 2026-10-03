@@ -44,10 +44,10 @@ from morana.execution_reports import (
     LinearSolveReport,
 )
 from morana.solve_settings import (
+    BicgstabLinearSolveSettings,
     DirectLinearSolveSettings,
     FixedSourceSettings,
     GmresLinearSolveSettings,
-    IluPreconditioner,
     JacobiPreconditioner,
     KeffSettings,
     NoPreconditioner,
@@ -56,7 +56,7 @@ from morana.solve_settings import (
 )
 
 _FORMAT = "morana-result"
-_SCHEMA_VERSION = 8
+_SCHEMA_VERSION = 9
 _MANIFEST_MEMBER = "manifest.json"
 
 
@@ -520,12 +520,19 @@ def _linear_solve_to_data(settings: object) -> dict[str, object]:
             "restart": settings.restart,
             "preconditioner": _preconditioner_to_data(settings.preconditioner),
         }
+    if isinstance(settings, BicgstabLinearSolveSettings):
+        return {
+            "kind": "bicgstab",
+            "relative_residual_tolerance": settings.relative_residual_tolerance,
+            "max_krylov_iterations": settings.max_krylov_iterations,
+            "preconditioner": _preconditioner_to_data(settings.preconditioner),
+        }
     raise ValueError("linear solve has an unsupported type")
 
 
 def _linear_solve_from_data(
     data: object,
-) -> DirectLinearSolveSettings | GmresLinearSolveSettings:
+) -> DirectLinearSolveSettings | GmresLinearSolveSettings | BicgstabLinearSolveSettings:
     """Restore one checked tagged linear-solve policy from archive data."""
     if not isinstance(data, dict):
         raise ValueError("archive linear solve must be a JSON object")
@@ -552,28 +559,38 @@ def _linear_solve_from_data(
             restart=data["restart"],
             preconditioner=_preconditioner_from_data(data["preconditioner"]),
         )
+    if data.get("kind") == "bicgstab":
+        _require_keys(
+            data,
+            {
+                "kind",
+                "relative_residual_tolerance",
+                "max_krylov_iterations",
+                "preconditioner",
+            },
+            "linear solve",
+        )
+        return BicgstabLinearSolveSettings(
+            relative_residual_tolerance=data["relative_residual_tolerance"],
+            max_krylov_iterations=data["max_krylov_iterations"],
+            preconditioner=_preconditioner_from_data(data["preconditioner"]),
+        )
     raise ValueError("archive linear solve has an unknown kind")
 
 
 def _preconditioner_to_data(preconditioner: object) -> dict[str, object]:
-    """Convert one typed GMRES preconditioner to tagged archive data."""
+    """Convert one typed iterative preconditioner to tagged archive data."""
     if isinstance(preconditioner, NoPreconditioner):
         return {"kind": "none"}
     if isinstance(preconditioner, JacobiPreconditioner):
         return {"kind": "jacobi"}
-    if isinstance(preconditioner, IluPreconditioner):
-        return {
-            "kind": "ilu",
-            "drop_tolerance": preconditioner.drop_tolerance,
-            "fill_factor": preconditioner.fill_factor,
-        }
     raise ValueError("preconditioner has an unsupported type")
 
 
 def _preconditioner_from_data(
     data: object,
-) -> NoPreconditioner | JacobiPreconditioner | IluPreconditioner:
-    """Restore one checked tagged GMRES preconditioner from archive data."""
+) -> NoPreconditioner | JacobiPreconditioner:
+    """Restore one checked tagged iterative preconditioner from archive data."""
     if not isinstance(data, dict):
         raise ValueError("archive preconditioner must be a JSON object")
     if data.get("kind") == "none":
@@ -582,11 +599,6 @@ def _preconditioner_from_data(
     if data.get("kind") == "jacobi":
         _require_keys(data, {"kind"}, "preconditioner")
         return JacobiPreconditioner()
-    if data.get("kind") == "ilu":
-        _require_keys(data, {"kind", "drop_tolerance", "fill_factor"}, "preconditioner")
-        return IluPreconditioner(
-            drop_tolerance=data["drop_tolerance"], fill_factor=data["fill_factor"]
-        )
     raise ValueError("archive preconditioner has an unknown kind")
 
 

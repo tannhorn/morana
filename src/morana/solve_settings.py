@@ -14,7 +14,7 @@ from morana._validation import (
 
 @dataclass(frozen=True)
 class NoPreconditioner:
-    """Select unpreconditioned GMRES execution."""
+    """Select unpreconditioned iterative execution."""
 
     @property
     def kind(self) -> str:
@@ -24,7 +24,7 @@ class NoPreconditioner:
 
 @dataclass(frozen=True)
 class JacobiPreconditioner:
-    """Select diagonal (Jacobi) preconditioning for GMRES."""
+    """Select diagonal (Jacobi) preconditioning for an iterative solve."""
 
     @property
     def kind(self) -> str:
@@ -32,47 +32,7 @@ class JacobiPreconditioner:
         return "jacobi"
 
 
-@dataclass(frozen=True)
-class IluPreconditioner:
-    """Select threshold incomplete-LU preconditioning for GMRES.
-
-    Parameters
-    ----------
-    drop_tolerance
-        Finite nonnegative real threshold used to drop incomplete-factor
-        entries. Boolean values are not accepted.
-    fill_factor
-        Finite positive real upper bound on incomplete-factor fill relative to
-        the original sparse matrix. Boolean values are not accepted.
-
-    Raises
-    ------
-    TypeError
-        If either control is not a real number or is Boolean.
-    ValueError
-        If either control is not finite after conversion to ``float``, or if
-        ``drop_tolerance`` is negative or ``fill_factor`` is nonpositive.
-    """
-
-    drop_tolerance: float = 1.0e-4
-    fill_factor: float = 10.0
-
-    def __post_init__(self) -> None:
-        """Check incomplete-LU controls."""
-        drop_tolerance = require_finite_nonnegative_real(
-            "drop_tolerance", self.drop_tolerance
-        )
-        fill_factor = require_finite_positive_real("fill_factor", self.fill_factor)
-        object.__setattr__(self, "drop_tolerance", drop_tolerance)
-        object.__setattr__(self, "fill_factor", fill_factor)
-
-    @property
-    def kind(self) -> str:
-        """Return the stable preconditioner identifier ``"ilu"``."""
-        return "ilu"
-
-
-LinearPreconditioner = NoPreconditioner | JacobiPreconditioner | IluPreconditioner
+LinearPreconditioner = NoPreconditioner | JacobiPreconditioner
 
 
 @dataclass(frozen=True)
@@ -129,7 +89,9 @@ class GmresLinearSolveSettings:
         Positive non-Boolean integer number of Krylov vectors retained in one
         GMRES cycle. It may not exceed ``max_krylov_iterations``.
     preconditioner
-        One immutable no, Jacobi, or threshold-ILU preconditioner policy.
+        One immutable no or Jacobi preconditioner policy. Jacobi is the
+        default; select no preconditioner explicitly when the assembled
+        diagonal makes Jacobi unusable.
 
     Raises
     ------
@@ -144,7 +106,7 @@ class GmresLinearSolveSettings:
     relative_residual_tolerance: float = 1.0e-10
     max_krylov_iterations: int = 1_000
     restart: int = 50
-    preconditioner: LinearPreconditioner = field(default_factory=NoPreconditioner)
+    preconditioner: LinearPreconditioner = field(default_factory=JacobiPreconditioner)
 
     def __post_init__(self) -> None:
         """Check GMRES controls and its typed preconditioner."""
@@ -158,12 +120,10 @@ class GmresLinearSolveSettings:
         if restart > max_krylov_iterations:
             raise ValueError("restart must not exceed max_krylov_iterations")
         if not isinstance(
-            self.preconditioner,
-            (NoPreconditioner, JacobiPreconditioner, IluPreconditioner),
+            self.preconditioner, (NoPreconditioner, JacobiPreconditioner)
         ):
             raise TypeError(
-                "preconditioner must be NoPreconditioner, JacobiPreconditioner, "
-                "or IluPreconditioner"
+                "preconditioner must be NoPreconditioner or JacobiPreconditioner"
             )
         object.__setattr__(
             self, "relative_residual_tolerance", relative_residual_tolerance
@@ -177,7 +137,65 @@ class GmresLinearSolveSettings:
         return "gmres"
 
 
-LinearSolveSettings = DirectLinearSolveSettings | GmresLinearSolveSettings
+@dataclass(frozen=True)
+class BicgstabLinearSolveSettings:
+    """Configure BiCGSTAB and its one typed preconditioner.
+
+    Parameters
+    ----------
+    relative_residual_tolerance
+        Finite positive real bound supplied to BiCGSTAB and applied again to
+        Morana's independently calculated true relative residual. Boolean
+        values are not accepted.
+    max_krylov_iterations
+        Positive non-Boolean integer maximum number of BiCGSTAB iterations.
+    preconditioner
+        One immutable no or Jacobi preconditioner policy. Jacobi is the
+        default; select no preconditioner explicitly when the assembled
+        diagonal makes Jacobi unusable.
+
+    Raises
+    ------
+    TypeError
+        If a numerical control has an unsupported type or is Boolean, or if
+        ``preconditioner`` is not a supported preconditioner policy.
+    ValueError
+        If a numerical control is out of range or cannot be represented as a
+        finite ``float``.
+    """
+
+    relative_residual_tolerance: float = 1.0e-10
+    max_krylov_iterations: int = 1_000
+    preconditioner: LinearPreconditioner = field(default_factory=JacobiPreconditioner)
+
+    def __post_init__(self) -> None:
+        """Check BiCGSTAB controls and its typed preconditioner."""
+        relative_residual_tolerance = require_finite_positive_real(
+            "relative_residual_tolerance", self.relative_residual_tolerance
+        )
+        max_krylov_iterations = require_positive_integer(
+            "max_krylov_iterations", self.max_krylov_iterations
+        )
+        if not isinstance(
+            self.preconditioner, (NoPreconditioner, JacobiPreconditioner)
+        ):
+            raise TypeError(
+                "preconditioner must be NoPreconditioner or JacobiPreconditioner"
+            )
+        object.__setattr__(
+            self, "relative_residual_tolerance", relative_residual_tolerance
+        )
+        object.__setattr__(self, "max_krylov_iterations", max_krylov_iterations)
+
+    @property
+    def strategy(self) -> str:
+        """Return the stable linear-solve strategy identifier ``"bicgstab"``."""
+        return "bicgstab"
+
+
+LinearSolveSettings = (
+    DirectLinearSolveSettings | GmresLinearSolveSettings | BicgstabLinearSolveSettings
+)
 
 
 @dataclass(frozen=True)
@@ -237,8 +255,8 @@ class FixedSourceSettings:
     Parameters
     ----------
     linear_solve
-        Immutable per-call direct or GMRES policy. Direct solving is the
-        default reference path.
+        Immutable per-call direct, GMRES, or BiCGSTAB policy. Direct solving
+        is the default reference path.
     flux_nonnegativity_tolerance
         Finite nonnegative real relative tolerance for accepting and cleaning
         negative roundoff in the solved scalar-flux vector. The threshold is
@@ -277,8 +295,8 @@ class KeffSettings:
     Parameters
     ----------
     inner_linear_solve
-        Immutable direct or GMRES policy applied separately to each outer
-        iteration. Direct solving is the default reference path.
+        Immutable direct, GMRES, or BiCGSTAB policy applied separately to each
+        outer iteration. Direct solving is the default reference path.
     max_outer_iterations
         Positive non-Boolean integer maximum power-iteration count.
     keff_change_tolerance
@@ -354,9 +372,17 @@ class KeffSettings:
 
 def _check_linear_solve(name: str, value: object) -> None:
     """Require one supported immutable linear-solve policy."""
-    if not isinstance(value, (DirectLinearSolveSettings, GmresLinearSolveSettings)):
+    if not isinstance(
+        value,
+        (
+            DirectLinearSolveSettings,
+            GmresLinearSolveSettings,
+            BicgstabLinearSolveSettings,
+        ),
+    ):
         raise TypeError(
-            f"{name} must be DirectLinearSolveSettings or GmresLinearSolveSettings"
+            f"{name} must be DirectLinearSolveSettings, "
+            "GmresLinearSolveSettings, or BicgstabLinearSolveSettings"
         )
 
 

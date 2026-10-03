@@ -22,6 +22,7 @@ from morana import (
 from morana.operators import (
     CrossSectionData,
     CrossSectionLayerData,
+    _FiniteVolumeLayout,
     _checked_layout,
     _fission_power_functional,
     _fission_production_functional,
@@ -31,6 +32,27 @@ from morana.operators import (
     assemble_source_rhs,
     extract_cross_section_data,
 )
+
+
+def test_layout_pack_unpack_preserve_ragged_node_order_and_ownership() -> None:
+    """Layer packing keeps node-major order and returns owned float arrays."""
+    layout = _FiniteVolumeLayout.from_active_cells(
+        groups=2, active_cells_by_layer=(2, 1)
+    )
+    layers = (
+        np.array([[1.0, 2.0], [3.0, 4.0]]),
+        np.array([[5.0], [6.0]]),
+    )
+    packed = layout.pack(layers)
+    np.testing.assert_array_equal(packed, [1.0, 3.0, 2.0, 4.0, 5.0, 6.0])
+    restored = layout.unpack(packed)
+    for actual, expected in zip(restored, layers, strict=True):
+        np.testing.assert_array_equal(actual, expected)
+        assert actual.dtype == float
+    packed[0] = 99.0
+    layers[0][0, 1] = 88.0
+    assert restored[0][0, 0] == 1.0
+    assert restored[0][0, 1] == 2.0
 
 
 def _configuration(

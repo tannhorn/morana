@@ -154,7 +154,7 @@ core-reflector interface and vacuum-face closures.
 From the repository root with Morana installed in the active environment:
 
 ```bash
-python examples/one_group_keff.py
+python -m examples.one_group_keff
 ```
 
 Pass `--output-dir PATH` to write the PNG and VTM files elsewhere. See the
@@ -166,5 +166,5 @@ finite-volume and boundary equations, and the
 To regenerate the checked-in figure on this page, run:
 
 ```bash
-python examples/one_group_keff.py --documentation-assets-dir docs/assets
+python -m examples.one_group_keff --documentation-assets-dir docs/assets
 ```

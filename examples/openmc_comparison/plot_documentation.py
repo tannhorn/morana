@@ -5,6 +5,9 @@ Raw OpenMC and Morana calculation artifacts remain outside version control;
 only the resulting publication figures belong in ``docs/assets``.
 """
 
+# Matplotlib configuration must precede its imports.
+# pylint: disable=wrong-import-order,wrong-import-position
+
 from __future__ import annotations
 
 import argparse
@@ -12,14 +15,21 @@ from pathlib import Path
 
 import numpy as np
 
-from artifact_paths import ARTIFACT_ROOT, REPOSITORY_ROOT, configure_matplotlib_cache
-from compare_study_cases import (
+from examples.openmc_comparison.artifact_paths import (
+    ARTIFACT_ROOT,
+    REPOSITORY_ROOT,
+    configure_matplotlib_cache,
+)
+from examples.openmc_comparison.compare_study_cases import (
     _load_ce_reference,
     _load_morana_case,
     compare_morana_cases,
 )
-from geometry import full_pitch_hex_vertices
-from plot_unit_cell import plot_unit_cell
+from examples.openmc_comparison.geometry import (
+    full_pitch_hex_vertices,
+    mini_core_coordinates,
+)
+from examples.openmc_comparison.plot_unit_cell import plot_unit_cell
 
 configure_matplotlib_cache()
 
@@ -226,10 +236,6 @@ def _selected_profiles(
 
 def _hex_collection(values: np.ndarray) -> PatchCollection:
     """Return a colored patch collection in the checked shared cell order."""
-
-    from geometry import (
-        mini_core_coordinates,
-    )  # pylint: disable=import-outside-toplevel
 
     coordinates = mini_core_coordinates()
     if values.shape != (len(coordinates),):
