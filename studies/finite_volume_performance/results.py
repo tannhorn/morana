@@ -52,12 +52,10 @@ _WORKLOAD_FIELDS = {
     "axial_layers",
     "active_cells",
     "unknowns",
-    "array_digests",
     "material_family_digest",
     "placement",
     "placement_digest",
 }
-_DIGEST_FIELDS = {"diffusion", "absorption", "scattering", "fission_transfer"}
 _OUTCOME_FIELDS = {
     "outcome_id",
     "case_id",
@@ -256,10 +254,6 @@ def _check_workload(value: object) -> tuple[str, dict[str, Any]]:
     if cells != 61 * layers or unknowns != cells * groups:
         raise ValueError("workload dimensions are inconsistent")
 
-    digests = _record(workload["array_digests"], _DIGEST_FIELDS, "array_digests")
-    for name, digest in digests.items():
-        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
-            raise ValueError(f"array_digests.{name} must be a SHA-256 digest")
     for field in ("material_family_digest", "placement_digest"):
         digest = workload[field]
         if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:

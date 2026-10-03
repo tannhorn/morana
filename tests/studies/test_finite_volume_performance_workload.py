@@ -36,11 +36,9 @@ def test_workload_matrix_has_expected_dimensions() -> None:
     )
 
 
-def test_frozen_calibration_and_digest_coverage() -> None:
-    """The calibration scalar, material arrays, and placement remain frozen."""
+def test_frozen_calibration_and_placement_digest_coverage() -> None:
+    """The calibration scalar and placement references remain frozen."""
     assert workload.CALIBRATION_SCALAR == 0.6004909682078956
-    assert set(workload.FROZEN_ARRAY_DIGESTS) == set(workload.GROUP_COUNTS)
-    assert set(workload.FROZEN_MATERIAL_FAMILY_DIGESTS) == set(workload.GROUP_COUNTS)
     assert set(workload.FROZEN_PLACEMENT_DIGESTS) == {2, 6, 12, 24}
     assert set(workload.FROZEN_PERMUTED_PLACEMENT_DIGESTS) == {2, 6, 12, 24}
 
@@ -190,19 +188,6 @@ def test_fission_transfer_support_shape_and_density_at_72_groups() -> None:
     first_spectrum = matrix[0] / matrix[0].sum()
     last_spectrum = matrix[-1] / matrix[-1].sum()
     np.testing.assert_allclose(first_spectrum, last_spectrum, rtol=5.0e-16)
-
-
-@pytest.mark.parametrize("groups", workload.GROUP_COUNTS)
-def test_frozen_array_digests(groups: int) -> None:
-    """Reference arrays and the full role-named family remain frozen."""
-    assert (
-        workload.generated_array_digests(groups, workload.REFERENCE_MATERIAL)
-        == workload.FROZEN_ARRAY_DIGESTS[groups]
-    )
-    assert (
-        workload.generated_material_family_digest(groups)
-        == workload.FROZEN_MATERIAL_FAMILY_DIGESTS[groups]
-    )
 
 
 @pytest.mark.parametrize("axial_layers", (2, 6, 12, 24))

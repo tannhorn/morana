@@ -38,12 +38,11 @@ from studies.finite_volume_performance.cases import (
 )
 from studies.finite_volume_performance.results import STAGE_NAMES
 from studies.finite_volume_performance.workload import (
-    FROZEN_ARRAY_DIGESTS,
-    FROZEN_MATERIAL_FAMILY_DIGESTS,
     FROZEN_PERMUTED_PLACEMENT_DIGESTS,
     FROZEN_PLACEMENT_DIGESTS,
     PERMUTED_PLACEMENT,
     build_configuration,
+    generated_material_family_digest,
     placement_record,
 )
 
@@ -579,7 +578,7 @@ def measure_direct(
 def workload_record(
     groups: int, axial_layers: int, placement: str
 ) -> dict[str, object]:
-    """Return the frozen workload definition referenced by outcomes."""
+    """Return the workload definition and generated-array byte provenance."""
     cells = 61 * axial_layers
     return {
         "workload_id": workload_identifier(groups, axial_layers, placement),
@@ -587,8 +586,7 @@ def workload_record(
         "axial_layers": axial_layers,
         "active_cells": cells,
         "unknowns": cells * groups,
-        "array_digests": dict(FROZEN_ARRAY_DIGESTS[groups]),
-        "material_family_digest": FROZEN_MATERIAL_FAMILY_DIGESTS[groups],
+        "material_family_digest": generated_material_family_digest(groups),
         "placement": placement_record(placement),
         "placement_digest": (
             FROZEN_PERMUTED_PLACEMENT_DIGESTS[axial_layers]

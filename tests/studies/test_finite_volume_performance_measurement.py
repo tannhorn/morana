@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 import tempfile
 
+import numpy as np
 import pytest
 
 from studies.finite_volume_performance import (
@@ -301,16 +302,34 @@ def test_checked_document_round_trip_is_deterministic(
     assert "inner_linear_solve" not in serialized["solve_controls"]
     assert "eigenvalue_iteration" not in serialized["solve_controls"]
     workload_record = document["workloads"][0]
-    assert (
-        workload_record["material_family_digest"]
-        == workload.FROZEN_MATERIAL_FAMILY_DIGESTS[6]
-    )
+    assert workload_record[
+        "material_family_digest"
+    ] == workload.generated_material_family_digest(6)
     assert workload_record["placement_digest"] == workload.FROZEN_PLACEMENT_DIGESTS[2]
     assert workload_record["placement"] == {
         "kind": "structured",
         "algorithm": None,
         "seed": None,
     }
+
+
+def test_workload_record_identifies_actual_generated_arrays(monkeypatch) -> None:
+    """Roundoff changes exact provenance without changing the workload family."""
+    baseline_record = measurement.workload_record(6, 2, "structured")
+    original = workload._synthetic_arrays
+
+    def perturbed_arrays(groups, role):
+        arrays = original(groups, role)
+        arrays["diffusion"] = np.nextafter(arrays["diffusion"], np.inf)
+        return arrays
+
+    monkeypatch.setattr(workload, "_synthetic_arrays", perturbed_arrays)
+    record = measurement.workload_record(6, 2, "structured")
+
+    assert record[
+        "material_family_digest"
+    ] == workload.generated_material_family_digest(6)
+    assert record["material_family_digest"] != baseline_record["material_family_digest"]
 
 
 def test_checked_document_rejects_broken_record_relationships(

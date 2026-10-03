@@ -95,83 +95,6 @@ _WEAK_TRANSFER = _ScatteringKernel(
     directional_fractions=(0.875, 0.11, 0.015),
 )
 
-FROZEN_ARRAY_DIGESTS = MappingProxyType(
-    {
-        6: MappingProxyType(
-            {
-                "diffusion": (
-                    "7e554d14b1faaee30233700a07665a145e8e65bc68fe543a71ad3b105c00fee0"
-                ),
-                "absorption": (
-                    "9fb78dbe7839cbeece42a93b87d4e7a69f5d95a528003aefc6f5f090f7c8c991"
-                ),
-                "scattering": (
-                    "7539dfb1eb81de713b0f83c7365d58b7c8eeb228a94f6187f191a16ccb5ccdd8"
-                ),
-                "fission_transfer": (
-                    "297a6de80876c6d63994e95d17aca61895a249a05c5d91dca9e1a8967566bf25"
-                ),
-            }
-        ),
-        18: MappingProxyType(
-            {
-                "diffusion": (
-                    "03cd7322947ee093b65c7f0c06cec388fb46c0c8ec1607f8c926c91980ac0129"
-                ),
-                "absorption": (
-                    "970a42cb87f564280af24af881cb793b1190aa8a6d7e7ff710cb4588c1732e84"
-                ),
-                "scattering": (
-                    "7f52b991317c172e476fc595a594af7cf2a9883caef299a13c3efc91508b20f3"
-                ),
-                "fission_transfer": (
-                    "ceed187dc50d7e5dd856d3b0ec4ea4705fe40ff8ace1000c13965e91ebcf454f"
-                ),
-            }
-        ),
-        36: MappingProxyType(
-            {
-                "diffusion": (
-                    "f490872b54e1c6709ca45db0f0241b257a9c994f62da2fc5e3e1e71282e38712"
-                ),
-                "absorption": (
-                    "f0d624e4d6974dabda5a7b527a8fcd23c152707e74ea297bd8d89764026a6330"
-                ),
-                "scattering": (
-                    "b913fe19f7da17754c9607725992fe7672c55b1d6eeda9e3e770b5f1ecb7f8c7"
-                ),
-                "fission_transfer": (
-                    "9d97fd8cded237faf101e0218d141e753ab6faf085f2581a13448a40152781a3"
-                ),
-            }
-        ),
-        72: MappingProxyType(
-            {
-                "diffusion": (
-                    "cb339ceaf3ec529aab2a4d6292cdc909d215a2778f68d8943c120bfabddfef08"
-                ),
-                "absorption": (
-                    "8be238b1be457ca54d196e98fa37038bf3cac88dff873bae473819dbf435e1f7"
-                ),
-                "scattering": (
-                    "c387d1268f152f66afd63bfc5e789982acadf704e95939fbca0024863da201fb"
-                ),
-                "fission_transfer": (
-                    "c3bb5ae87ed506783e8085ad8ef7b77443504a97d834129174c6b8447a08f3ff"
-                ),
-            }
-        ),
-    }
-)
-
-FROZEN_MATERIAL_FAMILY_DIGESTS = MappingProxyType(
-    {
-        6: "bc189ad5594e0e45c003f38256279c8c281d60f429d7225ea449a8c72a510b5d",
-        18: "be4c4b8ed013661b96a60074f95c5a1e4f2c8b136b3211f6644a4ee3db9269f5",
-        36: "ebb905e41caadc5dae0c460670fe67217bf93405b1b9b4dd674292766a6d99e2",
-        72: "e934ee202f1c83e848c3a905bd6b1162cae47ce8909e6a37cb8dba076ce9adfd",
-    }
-)
 FROZEN_PLACEMENT_DIGESTS = MappingProxyType(
     {
         2: "0004af9104a8f039ab239d49391ff0b88ec6365ecbd5fc0cea3bc388b7767aa1",
@@ -558,7 +481,7 @@ def array_digest(array: np.ndarray) -> str:
 
 
 def generated_array_digests(groups: int, material_name: str) -> dict[str, str]:
-    """Return deterministic digests for one checked synthetic material."""
+    """Return exact byte digests for one material in the current environment."""
     cross_sections = build_cross_sections(groups, material_name)
     if cross_sections.fission is None:  # pragma: no cover - construction invariant
         raise RuntimeError("synthetic cross sections unexpectedly lack fission data")
@@ -571,7 +494,7 @@ def generated_array_digests(groups: int, material_name: str) -> dict[str, str]:
 
 
 def generated_material_family_digest(groups: int) -> str:
-    """Return one deterministic digest covering every synthetic material array."""
+    """Return an exact byte digest of the current generated material family."""
     digest = sha256()
     for material_name in SYNTHETIC_MATERIAL_NAMES:
         digest.update(material_name.encode("ascii"))
