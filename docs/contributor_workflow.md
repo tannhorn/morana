@@ -127,20 +127,30 @@ release work. Pull requests into `main` and pushes to `main` run the hosted
 test, static, licensing, and documentation checks; workflows can also be
 dispatched manually for clean-environment verification. Only pushes to `main`
 deploy documentation. The protected branch requires every hosted check on an
-up-to-date pull request and allows squash-merging only.
+up-to-date pull request. Integrate `devel` into `main` using **Create a merge
+commit** so both long-lived branches retain the same commit identities.
 
-Because a squash merge gives the integrated change a new commit identity,
-synchronize the long-lived `devel` branch immediately after each pull request
+### Synchronizing the development branch
+
+Synchronize the long-lived `devel` branch immediately after each pull request
 merge and before beginning new work:
 
 ```bash
-scripts/sync_devel_after_pr.sh <PR_NUMBER>
+scripts/sync_devel_after_pr.sh
 ```
 
-The script requires a clean worktree, fetches `origin`, merges `origin/main`
-into `devel` with a descriptive synchronization commit, and pushes `devel`.
-Keeping this merge-back step adjacent to the squash merge prevents the branch
-histories from accumulating unrelated versions of the same change.
+The script takes no arguments, requires a clean worktree, fetches `origin`,
+fast-forwards local `devel` to `origin/main`, and pushes `devel`. It creates no
+commit. Immediately after integration and synchronization, `main` and `devel`
+should point to the same commit. The fast-forward step fails if `devel`
+contains new work that has not been integrated into `main`; keep that work and
+integrate it through another checked pull request before synchronizing.
+
+If `main` advances while a pull request is open, merge `origin/main` into
+`devel` and push the updated branch, then wait for the required checks again.
+This is a separate operation from the post-integration fast-forward above.
+
+### Integration and publication
 
 Merging a pull request into `main` integrates the change; it does not publish a
 Morana release. Ordinary pull requests may update project-level documentation
@@ -267,8 +277,9 @@ to integrate the package version, dated changelog, citation metadata,
 installation guidance, and public URLs. Reserve the version DOI in the
 prepared Zenodo draft so it is already present in the source. Run
 `python scripts/check_release_consistency.py` as part of that preparation.
-After the pull request is squash-merged, update local `main` without creating
-another commit and record the exact release commit:
+After the pull request is merged with a merge commit, synchronize `devel` as
+described above, then update local `main` without creating another commit and
+record the exact release merge commit:
 
 ```bash
 git switch main

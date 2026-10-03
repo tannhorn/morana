@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Synchronize the long-lived development branch after a squash merge.
+# Fast-forward the long-lived development branch after a merge pull request.
 set -euo pipefail
 
-if [[ $# -ne 1 || ! "$1" =~ ^[1-9][0-9]*$ ]]; then
-    echo "Usage: $0 <PR_NUMBER>" >&2
+if [[ $# -ne 0 ]]; then
+    echo "Usage: $0" >&2
     exit 2
 fi
 
@@ -17,5 +17,9 @@ fi
 
 git fetch origin
 git switch devel
-git merge origin/main -m "Sync devel with main after PR #$1"
+if ! git merge-base --is-ancestor HEAD origin/main; then
+    echo "devel contains work not integrated into main; merge its pull request first." >&2
+    exit 1
+fi
+git merge --ff-only origin/main
 git push origin devel
