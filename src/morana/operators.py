@@ -761,7 +761,13 @@ def _assemble_fission_power_functional(
     cross_sections: CrossSectionData,
     layout: _FiniteVolumeLayout,
 ) -> np.ndarray:
-    """Assemble fission-power coefficients after availability checking."""
+    """Assemble fission-power coefficients after availability checking.
+
+    Production coefficients in ``_fission_production_functional``
+    are already dense in each compact layer. Power
+    coefficients instead come from each cell's material, so the cell loop
+    resolves them directly without building a second compact array.
+    """
     material_mesh = configuration.material_mesh
     materials = configuration.materials
     functional = np.zeros(layout.size, dtype=float)
