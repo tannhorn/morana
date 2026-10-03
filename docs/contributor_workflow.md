@@ -154,8 +154,10 @@ update that dated release entry instead of creating a fragment for a future
 release.
 
 Morana currently uses sole-maintainer release approval. The maintainer may
-approve publication without a second-person review, but the protected
-pull-request and verification gates still apply.
+approve publication by publishing the GitHub release without a second-person
+review. This starts automatic PyPI publication; there is no separate manual
+PyPI approval step. The protected pull-request and verification gates still
+apply.
 
 ## Change fragments
 
@@ -226,7 +228,11 @@ source distribution and one pure-Python wheel before passing those files to a
 separate publishing job.
 
 Configure the PyPI Trusted Publisher for the repository, `publish.yml`, and the
-`pypi` GitHub environment. Require maintainer approval for that environment.
+`pypi` GitHub environment. The environment currently restricts deployment
+branches or tags and has no required reviewers. After the build passes, the
+publishing job runs automatically. Referencing an environment in the workflow
+does not itself require manual approval; that depends on its separately
+configured [environment protection rules](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
 Only the publishing job receives permission to request short-lived OIDC
 credentials; do not store a package-index API token in GitHub.
 
@@ -353,9 +359,14 @@ During one coordinated release window:
 3. Create and publish the GitHub release from the same tag, attach the identical
    two files, link the Zenodo record and documentation, and use the dated
    changelog as the release-note basis. Publication triggers the PyPI workflow
-   described above.
-4. Approve the protected PyPI publishing job, verify its distribution files,
-   then perform a clean, no-cache installation of the exact version and run
+   described above, including automatic publication after build validation.
+4. Confirm that both PyPI workflow jobs succeeded and inspect the build logs
+   and `python-distributions-<VERSION>` artifact. It must contain exactly
+   `morana-<VERSION>.tar.gz` and `morana-<VERSION>-py3-none-any.whl`. These are
+   package distributions built from the tag; the GitHub and Zenodo attachments
+   are the separately prepared source archive and checksum. Inspection does
+   not pause automatic publication. Then perform a clean, no-cache
+   installation of the exact version and run
    the installed metadata, quickstart, and result-archive smoke paths.
 5. Verify the deployed documentation and clean-install again from the
    published GitHub release archive.

@@ -39,9 +39,8 @@ commit and dependency environment for reproducible work, and review the
 and [changelog](https://www.lubomirbures.com/morana/changelog.html) before
 upgrading.
 
-Morana 0.1.0 is its first public release; development before this release
-occurred in a private repository, so the public Git history begins with version
-0.1.0.
+Morana's first public release was version 0.1.0. Earlier development took place
+in a private repository, so the public Git history begins with that version.
 
 ## Development disclosure
 
