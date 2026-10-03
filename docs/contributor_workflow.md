@@ -244,6 +244,18 @@ concatenate fragment bodies. Delete all consumed fragment files in the same
 release change, leave `changes/next_id.txt` at its current value, and run
 `python scripts/check_change_fragments.py` again.
 
+Keep release notes separate from release verification. Entries describe
+notable user-facing changes, required upgrade actions, and release-specific
+limitations. They do not require a verification or limitations section and
+should not repeat general test coverage or unchanged platform, API-stability,
+and validation disclaimers. Mention verification only when a change in its
+scope or conclusions materially affects users' interpretation of the release,
+and link to the [verification guide](verification.md) or other owning page.
+Public coverage and validation limits belong in those guides; dated,
+commit-specific check outcomes belong in the local handoff snapshot. All
+release verification gates below remain required regardless of what appears
+in the changelog.
+
 Prepare a release on `devel`, then use a pull request from `devel` into `main`
 to integrate the package version, dated changelog, citation metadata,
 installation guidance, and public URLs. Reserve the version DOI in the

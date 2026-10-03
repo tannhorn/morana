@@ -57,9 +57,14 @@ defines the exact limits of these capabilities.
   [contributor workflow](contributor_workflow.md) and
   [changelog](changelog.md), or
   [report an issue](https://github.com/tannhorn/morana/issues). The latest
-  [source release](https://github.com/tannhorn/morana/releases/tag/v0.1.0) is
-  version `0.1.0`; install its
-  [package distribution from PyPI](https://pypi.org/project/morana/0.1.0/).
+  [source release](https://github.com/tannhorn/morana/releases/tag/v0.2.0) is
+  version `0.2.0`; install its
+  [package distribution from PyPI](https://pypi.org/project/morana/0.2.0/).
+
+For project-level citation across releases, use the
+[concept DOI 10.5281/zenodo.22681315](https://doi.org/10.5281/zenodo.22681315).
+For the exact archived version used in a calculation, use its version DOI as
+explained in [citing Morana](citation.md).
 
 !!! warning "Project status and intended use"
     Morana is intended for research, teaching, and software development. It

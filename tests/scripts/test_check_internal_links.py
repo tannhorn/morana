@@ -1,10 +1,53 @@
 """Tests for the generated documentation internal-link checker."""
 
 from pathlib import Path
+import subprocess
 
 import pytest
 
-from scripts.check_internal_links import check_site
+from scripts.check_internal_links import _tracked_markdown_files, check_site
+
+
+def test_worktree_markdown_checks_surviving_sources_and_missing_targets(
+    tmp_path: Path,
+) -> None:
+    """Uncommitted deletions must leave surviving sources and links checkable."""
+    repository_root = tmp_path / "repository"
+    repository_root.mkdir()
+    subprocess.run(
+        ["git", "init", str(repository_root)], check=True, capture_output=True
+    )
+    readme = repository_root / "README.md"
+    readme.write_text(
+        "[Archive](https://github.example/owner/project/blob/main/archive.md)\n",
+        encoding="utf-8",
+    )
+    archive = repository_root / "archive.md"
+    archive.write_text("Archived notes\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(repository_root), "add", "README.md", "archive.md"],
+        check=True,
+        capture_output=True,
+    )
+    archive.unlink()
+    (repository_root / "scratch.md").write_text("Untracked notes\n", encoding="utf-8")
+    site_dir = tmp_path / "site"
+    site_dir.mkdir()
+    (site_dir / "index.html").write_text("", encoding="utf-8")
+
+    markdown_files = _tracked_markdown_files(repository_root)
+    result = check_site(
+        site_dir,
+        repository_root=repository_root,
+        repository_url="https://github.example/owner/project",
+        markdown_files=markdown_files,
+    )
+
+    assert markdown_files == (readme,)
+    assert result.links == 1
+    assert tuple(failure.reason for failure in result.failures) == (
+        "missing repository file",
+    )
 
 
 def test_check_site_accepts_local_files_and_fragments(tmp_path: Path) -> None:

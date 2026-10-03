@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "morana"
-version = "0.1.0"
+version = "0.2.0"
 description = "Morana: modern reactor analysis for hexagonal lattices."
 authors = [{name = "Lubomír Bureš"}]
 keywords = [
@@ -37,8 +37,8 @@ Source = "https://github.com/tannhorn/morana"
 Issues = "https://github.com/tannhorn/morana/issues"
 Changelog = "https://www.lubomirbures.com/morana/changelog.html"
 Citation = "https://www.lubomirbures.com/morana/citation.html"
-Release = "https://github.com/tannhorn/morana/releases/tag/v0.1.0"
-DOI = "https://doi.org/10.5281/zenodo.22681316"
+Release = "https://github.com/tannhorn/morana/releases/tag/v0.2.0"
+DOI = "https://doi.org/10.5281/zenodo.23118502"
 
 [project.optional-dependencies]
 dev = [

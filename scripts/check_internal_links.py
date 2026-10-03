@@ -330,7 +330,7 @@ def _parse_markdown(path: Path) -> _PageParser:
 
 
 def _tracked_markdown_files(repository_root: Path) -> tuple[Path, ...]:
-    """Return Markdown files tracked by the repository."""
+    """Return tracked Markdown sources still present in the working tree."""
     try:
         completed = subprocess.run(
             ["git", "-C", str(repository_root), "ls-files", "-z", "--", "*.md"],
@@ -340,7 +340,11 @@ def _tracked_markdown_files(repository_root: Path) -> tuple[Path, ...]:
     except (OSError, subprocess.CalledProcessError) as exc:
         raise ValueError("could not enumerate tracked Markdown files") from exc
     paths = completed.stdout.decode("utf-8").split("\0")
-    return tuple(repository_root / path for path in paths if path)
+    return tuple(
+        repository_root / path
+        for path in paths
+        if path and (repository_root / path).is_file()
+    )
 
 
 def _normalize_site_path(site_path: str) -> str:
