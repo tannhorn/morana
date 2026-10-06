@@ -14,7 +14,8 @@ window.MathJax = {
   },
   output: {
     font: "mathjax-newcm",
-    fontPath: "assets/mathjax/font",
+    // Resolve from this script so nested documentation pages use the same fonts.
+    fontPath: new URL("mathjax/font", document.currentScript.src).href,
   },
   tex: {
     inlineMath: {

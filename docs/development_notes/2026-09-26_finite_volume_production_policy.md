@@ -101,9 +101,8 @@ ordinary continuation decision.
 
 ## Common candidate screen
 
-The one-repetition common baseline completed 144 fresh-worker cases. Ninety-
-three succeeded and 51 retained terminal candidate failures; no worker reached
-the time or memory limit. The success counts were:
+The one-repetition common baseline completed 144 fresh-worker cases. Ninety-three succeeded and 51 retained terminal candidate failures; 
+no worker reached the time or memory limit. The success counts were:
 
 | Candidate | No preconditioner | Point Jacobi | Total | Disposition |
 | --- | ---: | ---: | ---: | --- |
